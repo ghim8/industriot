@@ -1,4 +1,20 @@
-industriot-front/node_modules/
-node_modules/
-vendor/
+# Laravel
+/vendor
+/node_modules
+/public/storage
+/storage/*.key
 .env
+
+# React
+react/node_modules
+
+# Docker
+docker-data
+mysql_data
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

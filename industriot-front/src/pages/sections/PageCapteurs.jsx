@@ -8,64 +8,45 @@ const TYPE_CONFIG = {
   courant:     { label:'Courant',     color:'#00d4aa', bg:'rgba(0,212,170,0.10)',  border:'rgba(0,212,170,0.20)'  },
   vibration:   { label:'Vibration',   color:'#ff4757', bg:'rgba(255,71,87,0.10)',  border:'rgba(255,71,87,0.20)'  },
   gaz:         { label:'Gaz',         color:'#a855f7', bg:'rgba(168,85,247,0.10)', border:'rgba(168,85,247,0.20)' },
+  pression:    { label:'Pression',    color:'#2ed573', bg:'rgba(46,213,115,0.10)', border:'rgba(46,213,115,0.20)' },
 };
 
-const TypeIcon = ({ type, size = 16, color }) => {
-  const c = color || TYPE_CONFIG[type]?.color || '#7a8394';
+const TypeIcon = ({ type, size=13 }) => {
+  const color = TYPE_CONFIG[type]?.color || '#7a8394';
   const icons = {
-    temperature: (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8">
-        <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/>
-      </svg>
-    ),
-    humidite: (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8">
-        <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/>
-      </svg>
-    ),
-    courant: (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8">
-        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-      </svg>
-    ),
-    vibration: (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8">
-        <polyline points="2 12 6 4 10 18 14 8 18 16 22 12"/>
-      </svg>
-    ),
-    gaz: (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8">
-        <path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"/>
-      </svg>
-    ),
+    temperature: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/></svg>,
+    humidite:    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>,
+    courant:     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>,
+    vibration:   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8"><polyline points="2 12 6 4 10 18 14 8 18 16 22 12"/></svg>,
+    gaz:         <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8"><path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"/></svg>,
+    pression:    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>,
   };
   return icons[type] || null;
 };
 
 export default function PageCapteurs() {
   const { user } = useAuth();
-  const [capteurs, setCapteurs]   = useState([]);
+  const [groupes, setGroupes]     = useState([]);
   const [machines, setMachines]   = useState([]);
+  const [machineSelected, setMachineSelected] = useState('all');
   const [loading, setLoading]     = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editCapteur, setEditCapteur] = useState(null);
-  const [form, setForm] = useState({
-    machine_id:'', type:'temperature', unite:'°C', seuil_min:'', seuil_max:''
-  });
+  const [form, setForm] = useState({ machine_id:'', type:'temperature', unite:'°C', seuil_min:'', seuil_max:'' });
   const [error, setError] = useState('');
 
   useEffect(() => { fetchData(); }, []);
 
-  const fetchData = () => {
-    Promise.all([api.get('/capteurs'), api.get('/machines')])
-      .then(([c, m]) => { setCapteurs(c.data); setMachines(m.data); setLoading(false); });
-  };
-
-  const openCreate = () => {
-    setEditCapteur(null);
-    setForm({ machine_id:'', type:'temperature', unite:'°C', seuil_min:'', seuil_max:'' });
-    setError('');
-    setShowModal(true);
+  const fetchData = (machineId = 'all') => {
+    const params = machineId !== 'all' ? `?machine_id=${machineId}` : '';
+    Promise.all([
+      api.get(`/capteurs${params}`),
+      api.get('/machines'),
+    ]).then(([c, m]) => {
+      setGroupes(c.data);
+      setMachines(m.data);
+      setLoading(false);
+    });
   };
 
   const openEdit = (c) => {
@@ -78,39 +59,25 @@ export default function PageCapteurs() {
   const handleSubmit = async () => {
     setError('');
     try {
-      if (editCapteur) {
-        await api.put(`/capteurs/${editCapteur.id}`, form);
-      } else {
-        await api.post('/capteurs', form);
-      }
+      await api.put(`/capteurs/${editCapteur.id}`, form);
       setShowModal(false);
-      fetchData();
-    } catch(e) {
-      setError(e.response?.data?.message || 'Erreur');
-    }
+      fetchData(machineSelected);
+    } catch(e) { setError(e.response?.data?.message || 'Erreur'); }
   };
 
   const handleDelete = async (id) => {
     if (!window.confirm('Supprimer ce capteur ?')) return;
     await api.delete(`/capteurs/${id}`);
-    fetchData();
+    fetchData(machineSelected);
   };
 
   const toggleActif = async (capteur) => {
     await api.put(`/capteurs/${capteur.id}`, { actif: capteur.actif ? 0 : 1 });
-    fetchData();
+    fetchData(machineSelected);
   };
 
-  const uniteDefaut = { temperature:'°C', humidite:'%', courant:'A', vibration:'g', gaz:'ppm' };
-
-  const parMachine = capteurs.reduce((acc, c) => {
-    const nom = c.machine?.nom || 'Sans machine';
-    if (!acc[nom]) acc[nom] = [];
-    acc[nom].push(c);
-    return acc;
-  }, {});
-
-  const totalActifs = capteurs.filter(c => c.actif).length;
+  const totalCapteurs = groupes.reduce((acc, g) => acc + (g.capteurs?.length || 0), 0);
+  const totalActifs   = groupes.reduce((acc, g) => acc + (g.capteurs?.filter(c => c.actif).length || 0), 0);
 
   if (loading) return <div style={S.loading}>Chargement...</div>;
 
@@ -120,43 +87,84 @@ export default function PageCapteurs() {
       <div style={S.header}>
         <div>
           <div style={S.headerTitle}>Capteurs</div>
-          <div style={S.headerSub}>{totalActifs} actif(s) sur {capteurs.length} capteur(s)</div>
+          <div style={S.headerSub}>{totalActifs} actif(s) sur {totalCapteurs} capteur(s)</div>
         </div>
-        {user?.role !== 'operateur' && (
-          <button style={S.btnPrimary} onClick={openCreate}>+ Nouveau capteur</button>
-        )}
+        <div style={{display:'flex', gap:10, alignItems:'center'}}>
+          {/* Filtre machine */}
+          <select style={S.select} value={machineSelected}
+            onChange={e => { setMachineSelected(e.target.value); fetchData(e.target.value); }}>
+            <option value="all">Toutes les machines</option>
+            {machines.map(m => <option key={m.id} value={m.id}>{m.nom}</option>)}
+          </select>
+        </div>
       </div>
 
-      {/* Métriques */}
+      {/* Métriques par type */}
       <div style={S.metricsRow}>
         {Object.entries(TYPE_CONFIG).map(([type, cfg]) => {
-          const count = capteurs.filter(c => c.type === type).length;
+          const count = groupes.reduce((acc, g) => acc + (g.capteurs?.filter(c => c.type === type).length || 0), 0);
           return (
             <div key={type} style={S.mcard}>
               <div style={{...S.mcardBar, background: cfg.color}}/>
-              <div style={S.mcardTop}>
-                <TypeIcon type={type} size={18} />
-                <span style={{...S.mcardLabel}}>{cfg.label.toUpperCase()}</span>
+              <div style={{display:'flex', alignItems:'center', gap:6, marginBottom:8}}>
+                <TypeIcon type={type} size={14}/>
+                <span style={S.mcardLabel}>{cfg.label}</span>
               </div>
               <div style={{...S.mcardVal, color: cfg.color}}>{count}</div>
-              <div style={S.mcardSub}>capteur{count > 1 ? 's' : ''}</div>
             </div>
           );
         })}
       </div>
 
-      {/* Capteurs par machine */}
-      {Object.entries(parMachine).map(([machineName, items]) => (
-        <div key={machineName} style={S.card}>
-          <div style={S.cardHead}>
-            <div style={S.cardHeadLeft}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7a8394" strokeWidth="1.8">
-                <rect x="2" y="7" width="20" height="14" rx="2"/>
-                <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>
-              </svg>
-              <span style={S.cardTitle}>{machineName}</span>
+      {/* Groupes par actionneur */}
+      {/* Groupes par machine → actionneur */}
+{(() => {
+  // Regrouper les groupes par machine
+  const parMachine = groupes.reduce((acc, g) => {
+    const machineName = g.capteurs?.[0]?.machine?.nom || 'Machine inconnue';
+    const machineId   = g.capteurs?.[0]?.machine?.id  || 0;
+    if (!acc[machineId]) acc[machineId] = { nom: machineName, groupes: [] };
+    acc[machineId].groupes.push(g);
+    return acc;
+  }, {});
+
+  return Object.entries(parMachine).map(([machineId, machine]) => (
+    <div key={machineId} style={{ marginBottom:24 }}>
+      {/* En-tête machine */}
+      <div style={S.machineHeader}>
+        <div style={S.machineHeaderLeft}>
+          <div style={S.machineIcon}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00d4aa" strokeWidth="2">
+              <rect x="2" y="7" width="20" height="14" rx="2"/>
+              <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>
+            </svg>
+          </div>
+          <span style={S.machineName}>{machine.nom} </span>
+          <span style={S.machineCount}>
+            
+          </span>
+        </div>
+      </div>
+
+      {/* Actionneurs de cette machine */}
+      {machine.groupes.map((groupe, gIdx) => (
+        <div key={gIdx} style={{...S.groupCard, marginLeft:16, borderLeft:'2px solid rgba(0,212,170,0.15)'}}>
+          <div style={S.groupHead}>
+            <div style={S.groupLeft}>
+              <div style={S.breadcrumb}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#00d4aa" strokeWidth="2">
+                  <circle cx="12" cy="12" r="3"/>
+                  <path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3"/>
+                </svg>
+                <span style={S.breadActionneur}>
+                  {groupe.actionneur ? groupe.actionneur.nom : 'Sans actionneur'}
+                </span>
+                {groupe.actionneur && (
+                  <span style={S.actTypeBadge}>{groupe.actionneur.type}</span>
+                )}
+              </div>
             </div>
-            <span style={S.cardSub}>{items.length} capteur(s)</span>
+            <span style={S.groupCount}>{groupe.capteurs?.length || 0} capteur(s)</span>
           </div>
 
           <table style={S.tbl}>
@@ -171,54 +179,43 @@ export default function PageCapteurs() {
               </tr>
             </thead>
             <tbody>
-              {items.map(c => {
-                const cfg = TYPE_CONFIG[c.type] || TYPE_CONFIG.temperature;
+              {(groupe.capteurs || []).map(c => {
+                const cfg = TYPE_CONFIG[c.type] || { color:'#7a8394', label:c.type, bg:'rgba(255,255,255,0.05)', border:'rgba(255,255,255,0.10)' };
                 return (
                   <tr key={c.id} style={{ opacity: c.actif ? 1 : 0.45 }}>
                     <td style={S.td}>
                       <div style={S.typeCell}>
-                        <div style={{...S.typeIcon, background: cfg.bg, border:`1px solid ${cfg.border}`}}>
-                          <TypeIcon type={c.type} size={13} />
+                        <div style={{...S.typeIcon, background:cfg.bg, border:`1px solid ${cfg.border}`}}>
+                          <TypeIcon type={c.type} size={13}/>
                         </div>
-                        <span style={{...S.typeLabel, color: cfg.color}}>{cfg.label}</span>
+                        <span style={{...S.typeLabel, color:cfg.color}}>{cfg.label}</span>
                       </div>
                     </td>
-                    <td style={{...S.td, fontFamily:'Segoe UI', color:'#7a8394'}}>{c.unite}</td>
-                    <td style={{...S.td, fontFamily:'Segoe UI'}}>
-                      {c.seuil_min !== null ? (
-                        <span style={S.seuilTag}>{c.seuil_min} {c.unite}</span>
-                      ) : <span style={S.dash}>—</span>}
+                    <td style={{...S.td, color:'#7a8394', fontSize:12}}>{c.unite}</td>
+                    <td style={S.td}>
+                      {c.seuil_min !== null ? <span style={S.seuilTag}>{c.seuil_min} {c.unite}</span> : <span style={S.dash}>—</span>}
                     </td>
-                    <td style={{...S.td, fontFamily:'Segoe UI'}}>
-                      {c.seuil_max !== null ? (
-                        <span style={S.seuilTag}>{c.seuil_max} {c.unite}</span>
-                      ) : <span style={S.dash}>—</span>}
+                    <td style={S.td}>
+                      {c.seuil_max !== null ? <span style={S.seuilTag}>{c.seuil_max} {c.unite}</span> : <span style={S.dash}>—</span>}
                     </td>
                     <td style={S.td}>
                       {user?.role !== 'operateur' ? (
-                        <button
-                          style={{...S.statusBtn,
-                            background: c.actif ? 'rgba(46,213,115,0.10)' : 'rgba(255,71,87,0.08)',
-                            border: `1px solid ${c.actif ? 'rgba(46,213,115,0.25)' : 'rgba(255,71,87,0.20)'}`,
-                            color: c.actif ? '#2ed573' : '#ff4757',
-                          }}
-                          onClick={() => toggleActif(c)}
-                        >
+                        <button style={{...S.statusBtn,
+                          background: c.actif ? 'rgba(46,213,115,0.10)' : 'rgba(255,71,87,0.08)',
+                          border:`1px solid ${c.actif ? 'rgba(46,213,115,0.25)' : 'rgba(255,71,87,0.20)'}`,
+                          color: c.actif ? '#2ed573' : '#ff4757',
+                        }} onClick={() => toggleActif(c)}>
                           {c.actif ? 'Actif' : 'Inactif'}
                         </button>
                       ) : (
-                        <span style={{...S.statusBtn,
-                          background: c.actif ? 'rgba(46,213,115,0.10)' : 'rgba(255,71,87,0.08)',
-                          color: c.actif ? '#2ed573' : '#ff4757',
-                          border: 'none', cursor:'default'
-                        }}>
+                        <span style={{fontSize:12, color: c.actif ? '#2ed573' : '#ff4757'}}>
                           {c.actif ? 'Actif' : 'Inactif'}
                         </span>
                       )}
                     </td>
                     {user?.role !== 'operateur' && (
                       <td style={S.td}>
-                        <div style={{display:'flex', gap:8}}>
+                        <div style={{display:'flex', gap:6}}>
                           <button style={S.btnEdit} onClick={() => openEdit(c)}>Modifier</button>
                           <button style={S.btnDel}  onClick={() => handleDelete(c.id)}>Supprimer</button>
                         </div>
@@ -231,62 +228,40 @@ export default function PageCapteurs() {
           </table>
         </div>
       ))}
+    </div>
+  ));
+})()}
 
-      {/* Modal */}
+      {/* Modal modifier capteur */}
       {showModal && (
         <div style={S.overlay}>
           <div style={S.modal}>
             <div style={S.modalHead}>
-              <span style={S.modalTitle}>{editCapteur ? 'Modifier capteur' : 'Nouveau capteur'}</span>
+              <span style={S.modalTitle}>Modifier capteur</span>
               <button style={S.modalClose} onClick={() => setShowModal(false)}>✕</button>
             </div>
             {error && <div style={S.error}>{error}</div>}
-
-            {!editCapteur && (
-              <Field label="MACHINE">
-                <select style={S.input} value={form.machine_id}
-                  onChange={e => setForm({...form, machine_id: e.target.value})}>
-                  <option value="">— Choisir une machine —</option>
-                  {machines.map(m => (
-                    <option key={m.id} value={m.id}>{m.nom}</option>
-                  ))}
-                </select>
-              </Field>
-            )}
-
-            <Field label="TYPE DE CAPTEUR">
-              <select style={S.input} value={form.type}
-                onChange={e => setForm({...form, type: e.target.value, unite: uniteDefaut[e.target.value]})}>
-                {Object.entries(TYPE_CONFIG).map(([type, cfg]) => (
-                  <option key={type} value={type}>{cfg.label}</option>
+            <Field label="TYPE">
+              <select style={S.input} value={form.type} onChange={e => setForm({...form, type:e.target.value})}>
+                {Object.entries(TYPE_CONFIG).map(([t, cfg]) => (
+                  <option key={t} value={t}>{cfg.label}</option>
                 ))}
               </select>
             </Field>
-
-            <Field label="UNITÉ DE MESURE">
-              <input style={S.input} value={form.unite}
-                onChange={e => setForm({...form, unite: e.target.value})}
-                placeholder="°C, %, A, g, ppm..." />
+            <Field label="UNITÉ">
+              <input style={S.input} value={form.unite} onChange={e => setForm({...form, unite:e.target.value})}/>
             </Field>
-
             <div style={S.grid2}>
-              <Field label="SEUIL MINIMUM">
-                <input style={S.input} type="number" value={form.seuil_min}
-                  onChange={e => setForm({...form, seuil_min: e.target.value})}
-                  placeholder="0" />
+              <Field label="SEUIL MIN">
+                <input style={S.input} type="number" value={form.seuil_min} onChange={e => setForm({...form, seuil_min:e.target.value})}/>
               </Field>
-              <Field label="SEUIL MAXIMUM">
-                <input style={S.input} type="number" value={form.seuil_max}
-                  onChange={e => setForm({...form, seuil_max: e.target.value})}
-                  placeholder="100" />
+              <Field label="SEUIL MAX">
+                <input style={S.input} type="number" value={form.seuil_max} onChange={e => setForm({...form, seuil_max:e.target.value})}/>
               </Field>
             </div>
-
             <div style={S.modalFooter}>
               <button style={S.btnSecondary} onClick={() => setShowModal(false)}>Annuler</button>
-              <button style={S.btnPrimary} onClick={handleSubmit}>
-                {editCapteur ? 'Enregistrer' : 'Créer'}
-              </button>
+              <button style={S.btnPrimary} onClick={handleSubmit}>Enregistrer</button>
             </div>
           </div>
         </div>
@@ -298,50 +273,53 @@ export default function PageCapteurs() {
 function Field({ label, children }) {
   return (
     <div style={{ marginBottom:14 }}>
-      <label style={S.label}>{label}</label>
+      <label style={{ display:'block', fontSize:11, color:'#7a8394', letterSpacing:1, marginBottom:7 }}>{label}</label>
       {children}
     </div>
   );
 }
 
 const S = {
-  loading:      { color:'#7a8394', textAlign:'center', marginTop:40 },
-  header:       { display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 },
-  headerTitle:  { fontSize:15, fontWeight:600, color:'#e8eaf0' },
-  headerSub:    { fontSize:12, color:'#7a8394', marginTop:4 },
-  metricsRow:   { display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:14, marginBottom:20 },
-  mcard:        { background:'#161b22', border:'1px solid rgba(255,255,255,0.07)', borderRadius:10, padding:'16px 18px', position:'relative', overflow:'hidden' },
-  mcardBar:     { position:'absolute', top:0, left:0, right:0, height:2 },
-  mcardTop:     { display:'flex', alignItems:'center', gap:8, marginBottom:10 },
-  mcardLabel:   { fontFamily:'Segoe UI', fontSize:9, color:'#4a5260', letterSpacing:1.5, textTransform:'uppercase' },
-  mcardVal:     { fontSize:24, fontWeight:600, fontFamily:'Segoe UI' },
-  mcardSub:     { fontSize:11, color:'#4a5260', marginTop:2 },
-  card:         { background:'#161b22', border:'1px solid rgba(255,255,255,0.07)', borderRadius:10, padding:'20px 22px', marginBottom:16 },
-  cardHead:     { display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16, paddingBottom:12, borderBottom:'1px solid rgba(255,255,255,0.05)' },
-  cardHeadLeft: { display:'flex', alignItems:'center', gap:8 },
-  cardTitle:    { fontFamily:'Segoe UI', fontSize:11, color:'#7a8394', letterSpacing:1, textTransform:'uppercase' },
-  cardSub:      { fontSize:11, color:'#4a5260', fontFamily:'Segoe UI' },
-  tbl:          { width:'100%', borderCollapse:'collapse' },
-  th:           { textAlign:'left', fontFamily:'Segoe UI', fontSize:10, color:'#4a5260', letterSpacing:1, textTransform:'uppercase', paddingBottom:10, borderBottom:'1px solid rgba(255,255,255,0.06)', paddingRight:16 },
-  td:           { padding:'12px 16px 12px 0', borderBottom:'1px solid rgba(255,255,255,0.04)', color:'#e8eaf0', fontSize:13 },
-  typeCell:     { display:'flex', alignItems:'center', gap:10 },
-  typeIcon:     { width:28, height:28, borderRadius:6, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 },
-  typeLabel:    { fontSize:12, fontWeight:500 },
-  seuilTag:     { fontFamily:'Segoe UI', fontSize:12, color:'#e8eaf0' },
-  dash:         { color:'#4a5260', fontFamily:'Segoe UI' },
-  statusBtn:    { fontSize:11, fontFamily:'Segoe UI', padding:'4px 10px', borderRadius:5, cursor:'pointer' },
-  btnEdit:      { padding:'5px 10px', background:'rgba(0,153,255,0.10)', border:'1px solid rgba(0,153,255,0.20)', borderRadius:6, color:'#0099ff', fontSize:11, cursor:'pointer' },
-  btnDel:       { padding:'5px 10px', background:'rgba(255,71,87,0.08)', border:'1px solid rgba(255,71,87,0.20)', borderRadius:6, color:'#ff4757', fontSize:11, cursor:'pointer' },
-  btnPrimary:   { padding:'8px 16px', background:'#00d4aa', border:'none', borderRadius:7, color:'#0a0c0f', fontWeight:600, fontSize:13, cursor:'pointer' },
-  btnSecondary: { padding:'8px 16px', background:'transparent', border:'1px solid rgba(255,255,255,0.12)', borderRadius:7, color:'#7a8394', fontSize:13, cursor:'pointer' },
-  overlay:      { position:'fixed', inset:0, background:'rgba(0,0,0,0.6)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:1000 },
-  modal:        { background:'#161b22', border:'1px solid rgba(255,255,255,0.12)', borderRadius:12, padding:'28px 32px', width:460, maxWidth:'90vw' },
-  modalHead:    { display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:24 },
-  modalTitle:   { fontSize:15, fontWeight:600, color:'#e8eaf0' },
-  modalClose:   { background:'none', border:'none', color:'#7a8394', fontSize:16, cursor:'pointer' },
-  modalFooter:  { display:'flex', justifyContent:'flex-end', gap:10, marginTop:24 },
-  grid2:        { display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 },
-  label:        { display:'block', fontSize:11, color:'#7a8394', letterSpacing:1, marginBottom:7, fontFamily:'Segoe UI' },
-  input:        { width:'100%', padding:'10px 14px', background:'#1c2129', border:'1px solid rgba(255,255,255,0.12)', borderRadius:7, color:'#e8eaf0', fontSize:13, outline:'none', boxSizing:'border-box' },
-  error:        { background:'rgba(255,71,87,0.1)', border:'1px solid rgba(255,71,87,0.3)', color:'#ff4757', padding:'10px 14px', borderRadius:7, fontSize:13, marginBottom:16 },
+  loading:       { color:'#7a8394', textAlign:'center', marginTop:40 },
+  header:        { display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 },
+  headerTitle:   { fontSize:15, fontWeight:600, color:'#e8eaf0' },
+  headerSub:     { fontSize:12, color:'#7a8394', marginTop:4 },
+  select:        { padding:'7px 12px', background:'#1c2129', border:'1px solid rgba(255,255,255,0.12)', borderRadius:7, color:'#e8eaf0', fontSize:12, cursor:'pointer', outline:'none' },
+  metricsRow:    { display:'grid', gridTemplateColumns:'repeat(6,1fr)', gap:10, marginBottom:20 },
+  mcard:         { background:'#161b22', border:'1px solid rgba(255,255,255,0.07)', borderRadius:8, padding:'12px 14px', position:'relative', overflow:'hidden' },
+  mcardBar:      { position:'absolute', top:0, left:0, right:0, height:2 },
+  mcardLabel:    { fontSize:10, color:'#4a5260', textTransform:'uppercase', fontWeight:500 },
+  mcardVal:      { fontSize:22, fontWeight:700 },
+  groupCard:     { background:'#161b22', border:'1px solid rgba(255,255,255,0.07)', borderRadius:10, padding:'16px 20px', marginBottom:14 },
+  groupHead:     { display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14, paddingBottom:12, borderBottom:'1px solid rgba(255,255,255,0.05)' },
+  groupLeft:     { display:'flex', alignItems:'center', gap:10 },
+  breadcrumb:    { display:'flex', alignItems:'center', gap:6 },
+  breadMachine:  { fontSize:12, color:'#7a8394' },
+  breadSep:      { fontSize:14, color:'#4a5260' },
+  breadActionneur:{ fontSize:13, fontWeight:600, color:'#e8eaf0' },
+  actTypeBadge:  { fontSize:10, color:'#00d4aa', background:'rgba(0,212,170,0.08)', border:'1px solid rgba(0,212,170,0.18)', borderRadius:4, padding:'2px 7px', marginLeft:4 },
+  groupCount:    { fontSize:11, color:'#4a5260' },
+  tbl:           { width:'100%', borderCollapse:'collapse' },
+  th:            { textAlign:'left', fontSize:10, color:'#4a5260', fontWeight:500, paddingBottom:8, borderBottom:'1px solid rgba(255,255,255,0.06)', textTransform:'uppercase', letterSpacing:0.5, paddingRight:12 },
+  td:            { padding:'10px 12px 10px 0', borderBottom:'1px solid rgba(255,255,255,0.04)', color:'#e8eaf0', fontSize:13 },
+  typeCell:      { display:'flex', alignItems:'center', gap:8 },
+  typeIcon:      { width:26, height:26, borderRadius:6, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 },
+  typeLabel:     { fontSize:12, fontWeight:500 },
+  seuilTag:      { fontSize:12, color:'#e8eaf0' },
+  dash:          { color:'#4a5260' },
+  statusBtn:     { fontSize:11, padding:'4px 10px', borderRadius:5, cursor:'pointer' },
+  btnEdit:       { padding:'4px 10px', background:'rgba(0,153,255,0.10)', border:'1px solid rgba(0,153,255,0.20)', borderRadius:5, color:'#0099ff', fontSize:11, cursor:'pointer' },
+  btnDel:        { padding:'4px 10px', background:'rgba(255,71,87,0.08)', border:'1px solid rgba(255,71,87,0.18)', borderRadius:5, color:'#ff4757', fontSize:11, cursor:'pointer' },
+  empty:         { color:'#4a5260', textAlign:'center', padding:'40px 0', fontSize:13 },
+  overlay:       { position:'fixed', inset:0, background:'rgba(0,0,0,0.6)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:1000 },
+  modal:         { background:'#161b22', border:'1px solid rgba(255,255,255,0.12)', borderRadius:12, padding:'28px 32px', width:400, maxWidth:'90vw' },
+  modalHead:     { display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 },
+  modalTitle:    { fontSize:15, fontWeight:600, color:'#e8eaf0' },
+  modalClose:    { background:'none', border:'none', color:'#7a8394', fontSize:16, cursor:'pointer' },
+  modalFooter:   { display:'flex', justifyContent:'flex-end', gap:10, marginTop:20 },
+  grid2:         { display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 },
+  input:         { width:'100%', padding:'10px 14px', background:'#1c2129', border:'1px solid rgba(255,255,255,0.12)', borderRadius:7, color:'#e8eaf0', fontSize:13, outline:'none', boxSizing:'border-box' },
+  error:         { background:'rgba(255,71,87,0.1)', border:'1px solid rgba(255,71,87,0.3)', color:'#ff4757', padding:'10px 14px', borderRadius:7, fontSize:13, marginBottom:16 },
+  btnPrimary:    { padding:'8px 16px', background:'#00d4aa', border:'none', borderRadius:7, color:'#0a0c0f', fontWeight:600, fontSize:13, cursor:'pointer' },
+  btnSecondary:  { padding:'8px 16px', background:'transparent', border:'1px solid rgba(255,255,255,0.12)', borderRadius:7, color:'#7a8394', fontSize:13, cursor:'pointer' },
 };

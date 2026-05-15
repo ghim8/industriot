@@ -1,0 +1,83 @@
+services:
+ nginx:
+    image: nginx:alpine
+    container_name: industriot_nginx
+    ports:
+      - "80:80"           # ← UNE SEULE URL port 80
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - laravel
+      - react
+      - phpmyadmin
+    restart: always
+    networks:
+      - industriot_network
+
+
+ laravel:
+    build:
+      context: ./industriot-api
+      dockerfile: Dockerfile
+    container_name: industriot_laravel
+    restart: always
+    expose:
+      - "8000"
+    volumes:
+      - ./industriot-api:/var/www
+    env_file:
+      - ./industriot-api/.env
+    depends_on:
+      - mysql
+    networks:
+      - industriot_network
+
+
+ react:
+    build:
+      context: ./industriot-front
+      dockerfile: Dockerfile
+    container_name: industriot_react
+    expose:
+      - "80"    
+    depends_on:
+      - laravel
+    restart: always
+    networks:
+      - industriot_network
+
+ mysql:
+    image: mysql:8.0
+    container_name: industriot_mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: industriot
+    expose:
+      - "3306"  
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - industriot_network
+
+ phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: industriot_phpmyadmin
+    restart: always
+    ports:
+      - "8081:80"  
+    environment:
+      PMA_HOST: mysql
+      PMA_USER: root
+      PMA_PASSWORD: root
+    depends_on:
+      - mysql
+    networks:
+      - industriot_network
+
+volumes:
+  mysql_data:
+
+networks:
+  industriot_network:
+    driver: bridge

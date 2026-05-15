@@ -3,8 +3,14 @@ import api from '../../api/axios';
 import { generateEmail } from '../../utils/generateEmail';
 import ConfirmModal from '../../components/ConfirmModal';
 import { validateUsineEmail } from '../../utils/validateEmail';
+import EmailField from '../../components/EmailField';
+import { useAuth } from '../../context/AuthContext';
 export default function PageUtilisateurs() {
   const [users, setUsers]         = useState([]);
+  const { user } = useAuth();
+const slug = React.useMemo(() => 
+    user?.entreprise?.slug || 'usine'
+, [user?.entreprise?.slug]);
   const [loading, setLoading]     = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editUser, setEditUser]   = useState(null);
@@ -33,13 +39,19 @@ export default function PageUtilisateurs() {
   };
 
   const handleNomChange = (nom) => {
-    setForm(f => ({ ...f, nom, email: generateEmail(nom) }));
-  };
+    setForm(f => ({ ...f, nom, email: generateEmail(nom, slug) }));
+};
 
   const handleSubmit = async () => {
   setError('');
+  
+  const emailDomain = form.email.split('@')[1] ?? '';
+    if (emailDomain !== `${slug}.local`) {
+        setError(`L'email doit être au format @${slug}.local`);
+        return;
+    }
 
-  const emailError = validateUsineEmail(form.email);
+  const emailError = validateUsineEmail(form.email,slug);
   if (emailError) { setError(emailError); return; }
 
   try {
@@ -144,11 +156,17 @@ export default function PageUtilisateurs() {
                 placeholder="" />
             </Field>
 
-            <Field label="EMAIL">
-              <input style={S.input} type="email" value={form.email}
-                onChange={e => setForm({...form, email:e.target.value})}
-                placeholder="exemple@usine.local" />
-            </Field>
+           <Field label="EMAIL">
+  <EmailField
+    value={form.email}
+    onChange={(val) => {
+      const local = val.split('@')[0];
+      setForm({...form, email: `${local}@${slug}.local`});
+    }}
+    slug={slug}
+    style={S.input}
+  />
+</Field>
 
             <Field label={editUser ? 'NOUVEAU MOT DE PASSE (laisser vide = inchangé)' : 'MOT DE PASSE'}>
               <input style={S.input} type="password" value={form.mot_de_passe}

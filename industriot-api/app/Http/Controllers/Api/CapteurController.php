@@ -4,30 +4,57 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Capteur;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
-class CapteurController extends Controller
+class CapteurController extends BaseController
 {
   public function index(Request $request)
 {
+    $entrepriseId = $request->attributes->get('_entreprise_id') 
+                ?? $request->user()?->entreprise_id;
     $userId    = $request->query('user_id');
     $machineId = $request->query('machine_id');
     $user      = $userId ? \App\Models\Utilisateur::find($userId) : null;
 
+    // Déterminer les actionneurs accessibles
     if (!$user || $user->role === 'admin') {
-        $query = \App\Models\Capteur::with('machine');
-    } else {
-        $machineIds = \App\Models\Affectation::where('utilisateur_id', $user->id)
-                                             ->pluck('machine_id');
-        $query = \App\Models\Capteur::with('machine')
-                                    ->whereIn('machine_id', $machineIds);
+    $query = \App\Models\Actionneur::with(['capteurs.machine'])
+                                   ->where('actif', 1);
+    if ($entrepriseId) {
+        $query->whereHas('machine', fn($q) => $q->where('entreprise_id', $entrepriseId));
     }
+    if ($machineId) $query->where('machine_id', $machineId);
+    $actionneurs = $query->get();
 
-    // Filtre par machine_id si fourni
-    if ($machineId) {
-        $query->where('machine_id', $machineId);
-    }
+} elseif ($user->role === 'chef') {
+    $machineIds = \App\Models\Affectation::where('utilisateur_id', $user->id)
+                                         ->pluck('machine_id');
+    $query = \App\Models\Actionneur::with(['capteurs.machine'])
+                                   ->whereIn('machine_id', $machineIds)
+                                   ->where('actif', 1);
+    if ($machineId) $query->where('machine_id', $machineId);
+    $actionneurs = $query->get();
 
-    return response()->json($query->get());
+} else {
+    $actionneurIds = DB::table('actionneur_operateur')
+                       ->where('operateur_id', $user->id)
+                       ->pluck('actionneur_id');
+    $query = \App\Models\Actionneur::with(['capteurs.machine'])
+                                   ->whereIn('id', $actionneurIds)
+                                   ->where('actif', 1);
+    if ($machineId) $query->where('machine_id', $machineId);
+    $actionneurs = $query->get();
+}
+
+    // Formater : un groupe par actionneur
+    $grouped = $actionneurs->map(function($actionneur) {
+        return [
+            'actionneur' => $actionneur,
+            'capteurs'   => $actionneur->capteurs,
+        ];
+    });
+
+    return response()->json($grouped->values());
 }
     public function store(Request $request)
     {

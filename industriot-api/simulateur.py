@@ -27,21 +27,35 @@ def fetch_machines():
         machines = res.json()
         result = []
         for m in machines:
-            cap_res = requests.get(f"{API_URL}/capteurs?machine_id={m['id']}", timeout=5)
-            capteurs = cap_res.json()
+            # Récupérer les actionneurs avec leurs capteurs
+            act_res = requests.get(f"{API_URL}/actionneurs?machine_id={m['id']}", timeout=5)
+            actionneurs = act_res.json()
 
-            # Dédoublonner — un seul capteur par type
-            seen = {}
-            for c in capteurs:
-                if c.get("actif", True) and c["type"] not in seen:
-                    seen[c["type"]] = c
+            machine_capteurs = []
+            for a in actionneurs:
+                capteurs = a.get('capteurs', [])
+                for c in capteurs:
+                    cap = dict(c)
+                    cap['actionneur_id']  = a['id']
+                    cap['actionneur_nom'] = a['nom']
+                    machine_capteurs.append(cap)
 
-            if seen:
+            # Fallback — capteurs directs sans actionneur
+            if not machine_capteurs:
+                cap_res = requests.get(f"{API_URL}/capteurs?machine_id={m['id']}", timeout=5)
+                for g in cap_res.json():
+                    for c in (g.get('capteurs') or []):
+                        cap = dict(c)
+                        cap['actionneur_id']  = None
+                        cap['actionneur_nom'] = m['nom']
+                        machine_capteurs.append(cap)
+
+            if machine_capteurs:
                 result.append({
                     "id":       m["id"],
                     "nom":      m["nom"],
                     "topic":    m.get("topic_mqtt") or f"usine/machine_{m['id']}",
-                    "capteurs": list(seen.values()),
+                    "capteurs": machine_capteurs,
                 })
         return result
     except Exception as e:
@@ -55,7 +69,7 @@ def generer_valeur(capteur):
     seuil_max_raw = capteur.get("seuil_max")
     seuil_max = float(seuil_max_raw) if seuil_max_raw is not None else cfg["seuil_max"]
     
-    if random.random() < 0.05:
+    if random.random() < 0.9:
         valeur = seuil_max * 1.1
     
     return round(valeur, 4)
@@ -112,13 +126,14 @@ def main():
                     # Publier sur MQTT
                     topic   = f"{machine['topic']}/{capteur['type']}"
                     payload = json.dumps({
-                        "machine_id": machine["id"],
-                        "capteur_id": capteur["id"],
-                        "type":       capteur["type"],
-                        "valeur":     valeur,
-                        "unite":      capteur.get("unite", ""),
-                        "hors_seuil": hs,
-                        "timestamp":  time.time(),
+                        "machine_id":    machine["id"],
+                        "capteur_id":    capteur["id"],
+                        "actionneur_id": capteur.get("actionneur_id"),  # ← nouveau
+                        "type":          capteur["type"],
+                        "valeur":        valeur,
+                        "unite":         capteur.get("unite", ""),
+                        "hors_seuil":    hs,
+                        "timestamp":     time.time(),
                     })
                     client.publish(topic, payload, qos=1)
 
@@ -127,13 +142,15 @@ def main():
                         requests.post(f"{API_URL}/mesures", json={
                             "machine_id": machine["id"],
                             "capteur_id": capteur["id"],
+                            "actionneur_id": capteur.get("actionneur_id"),
                             "valeur":     valeur,
                         }, timeout=3)
                     except:
                         pass
 
                     status = "🔴 HORS SEUIL" if hs else "🟢 OK"
-                    print(f"  {machine['nom']:15} | {capteur['type']:12} | {valeur:8.4f} | {status}")
+                    act_nom = capteur.get("actionneur_nom", "—")
+                    print(f"  {machine['nom']:15} | {act_nom:12} | {capteur['type']:12} | {valeur:8.4f} | {status}")
 
             print(f"  ⏱️  Prochain cycle dans {INTERVAL}s...")
             time.sleep(INTERVAL)

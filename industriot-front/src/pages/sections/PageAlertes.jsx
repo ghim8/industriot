@@ -14,12 +14,24 @@ export default function PageAlertes() {
   const [confirmData, setConfirmData]       = useState(null);
 
   useEffect(() => {
-    Promise.all([api.get('/alertes'), api.get('/machines')]).then(([a, m]) => {
-      setAlertes(a.data);
-      setMachines(m.data);
-      setLoading(false);
-    });
-  }, []);
+    const fetchData = () => {
+  Promise.all([
+    api.get(`/alertes?user_id=${user?.id}`),
+    api.get(`/machines?user_id=${user?.id}`)
+  ]).then(([a, m]) => {
+        setAlertes(a.data);
+        setMachines(m.data);
+        setLoading(false);
+      });
+    };
+
+    fetchData(); // Premier chargement
+
+    // Refresh toutes les 10 secondes
+    const interval = setInterval(fetchData, 10000);
+
+    return () => clearInterval(interval); // Nettoyage
+  }, [user?.id]);
 
   const acquitter = async (id) => {
     try {
@@ -201,6 +213,25 @@ const CS = {
               {/* Contenu */}
               <div style={{flex:1, minWidth:0}}>
                 <div style={S.alertMsg}>{a.message}</div>
+{/* Actionneur badge */}
+{a.actionneur && (
+  <div style={S.actionneurBadge}>
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="12" cy="12" r="3"/>
+      <path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3"/>
+    </svg>
+    {a.actionneur.nom} · {a.actionneur.type}
+  </div>
+)}
+{a.machine_nom && (
+  <div style={S.machineBadge}>
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="2" y="7" width="20" height="14" rx="2"/>
+      <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>
+    </svg>
+    {a.machine_nom}
+  </div>
+)}
                 <div style={S.alertMeta}>
                   {a.valeur !== null && (
                     <span style={S.metaChip}>
@@ -271,4 +302,6 @@ const S = {
   btnAcquitter:    { padding:'5px 12px', background:'rgba(0,212,170,0.08)', border:'1px solid rgba(0,212,170,0.22)', borderRadius:6, color:'#00d4aa', fontSize:11, cursor:'pointer' },
   checkmark:       { fontSize:14, color:'#2ed573' },
   btnTrash:        { padding:'5px 7px', background:'rgba(255,71,87,0.07)', border:'1px solid rgba(255,71,87,0.16)', borderRadius:6, color:'#ff4757', cursor:'pointer', display:'flex', alignItems:'center' },
+  actionneurBadge: { display:'inline-flex', alignItems:'center', gap:5, fontSize:11, color:'#00d4aa', background:'rgba(0,212,170,0.08)', border:'1px solid rgba(0,212,170,0.18)', borderRadius:4, padding:'2px 8px', marginRight:6, marginBottom:4 },
+machineBadge:    { display:'inline-flex', alignItems:'center', gap:5, fontSize:11, color:'#7a8394', background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:4, padding:'2px 8px', marginBottom:4 },
 };

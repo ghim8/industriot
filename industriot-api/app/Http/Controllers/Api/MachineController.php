@@ -6,7 +6,7 @@ use App\Models\Machine;
 use App\Models\Affectation;
 use Illuminate\Http\Request;
 
-class MachineController extends Controller
+class MachineController extends BaseController
 {
     private function getMachineIds(Request $request)
     {
@@ -15,61 +15,109 @@ class MachineController extends Controller
         return Affectation::where('utilisateur_id', $user->id)->pluck('machine_id');
     }
 
-    public function index(Request $request)
-    {
-        $user = \App\Models\Utilisateur::find($request->query('user_id'));
-        if (!$user || $user->role === 'admin') {
-            return response()->json(Machine::all());
-        }
-        $machineIds = Affectation::where('utilisateur_id', $user->id)->pluck('machine_id');
-        return response()->json(Machine::whereIn('id', $machineIds)->get());
+   public function index(Request $request)
+{
+    $entrepriseId = $request->attributes->get('_entreprise_id') 
+                ?? $request->user()?->entreprise_id;
+    $userId       = $request->query('user_id');
+    $user         = $userId ? \App\Models\Utilisateur::find($userId) : $request->user();
+
+    $query = Machine::query();
+
+    // Filtre tenant — chaque entreprise voit seulement ses machines
+    if ($entrepriseId) {
+        $query->where('entreprise_id', $entrepriseId);
     }
 
-    public function show($id)
-    {
-        return response()->json(Machine::findOrFail($id));
+    // Filtre par rôle
+    if ($user && $user->role === 'chef') {
+        $machineIds = Affectation::where('utilisateur_id', $user->id)
+                                 ->pluck('machine_id');
+        $query->whereIn('id', $machineIds);
+    } elseif ($user && $user->role === 'operateur') {
+        $machineIds = \DB::table('actionneur_operateur')
+                        ->where('operateur_id', $user->id)
+                        ->join('actionneurs', 'actionneurs.id', '=', 'actionneur_operateur.actionneur_id')
+                        ->pluck('actionneurs.machine_id')
+                        ->unique();
+        $query->whereIn('id', $machineIds);
     }
 
-    public function store(Request $request)
+    return response()->json($query->get());
+}
+public function show(Request $request, $id)
+{
+    $entrepriseId = $request->attributes->get('_entreprise_id') ?? $request->user()?->entreprise_id;
+
+    $machine = Machine::findOrFail($id);
+
+    // Vérifier que la machine appartient à l'entreprise
+    if ($entrepriseId && $machine->entreprise_id !== $entrepriseId) {
+        return response()->json(['message' => 'Accès refusé'], 403);
+    }
+
+    return response()->json($machine);
+}
+public function store(Request $request)
 {
     $request->validate([
         'nom'          => 'required|string|max:150',
-        'localisation' => 'required|string|max:200',
+        'localisation' => 'nullable|string',
+        'topic_mqtt'   => 'nullable|string',
+        'description'  => 'nullable|string',
+        'statut'       => 'nullable|string',
     ]);
 
     $machine = Machine::create([
-        'nom'          => $request->nom,
-        'localisation' => $request->localisation,
-        'topic_mqtt'   => $request->topic_mqtt  ?? '',
-        'description'  => $request->description ?? '',
-        'statut'       => $request->statut       ?? 'EN SERVICE',
-        'est_statique' => 0,
+        'nom'           => $request->nom,
+        'localisation'  => $request->localisation ?? '',
+        'topic_mqtt'    => $request->topic_mqtt ?? '',
+        'description'   => $request->description ?? '',
+        'statut'        => $request->statut ?? 'EN SERVICE',
+        'entreprise_id' => $request->attributes->get('_entreprise_id') ?? $request->user()?->entreprise_id, // ← vient du middleware
+        'cree_par'      => $request->user()->id,
     ]);
+    
 
-    // Créer les capteurs sélectionnés
-    if ($request->has('capteurs') && is_array($request->capteurs)) {
-        $unites = [
-            'temperature' => '°C',
-            'humidite'    => '%',
-            'courant'     => 'A',
-            'vibration'   => 'g',
-            'gaz'         => 'ppm',
-            'pression'    => 'bar',
-        ];
-        foreach ($request->capteurs as $cap) {
-            \App\Models\Capteur::create([
-                'machine_id' => $machine->id,
-                'type'       => $cap['type'],
-                'unite'      => $cap['unite'] ?? $unites[$cap['type']] ?? '',
-                'seuil_min'  => $cap['seuil_min'] ?? null,
-                'seuil_max'  => $cap['seuil_max'] ?? null,
-                'actif'      => 1,
+    // Créer les actionneurs si fournis
+    if ($request->has('actionneurs') && is_array($request->actionneurs)) {
+        foreach ($request->actionneurs as $act) {
+            $actionneur = \App\Models\Actionneur::create([
+                'machine_id'    => $machine->id,
+                'nom'           => $act['nom'],
+                'type'          => $act['type'],
+                'description'   => $act['description'] ?? '',
+                'actif'         => 1,
+                'entreprise_id' => $this->getEntrepriseId($request),
+            ]);
+
+            foreach ($act['capteurs'] ?? [] as $cap) {
+                $capteur = \App\Models\Capteur::create([
+                    'machine_id' => $machine->id,
+                    'type'       => $cap['type'],
+                    'unite'      => $cap['unite'] ?? '',
+                    'seuil_min'  => $cap['seuil_min'] ?? null,
+                    'seuil_max'  => $cap['seuil_max'] ?? null,
+                    'actif'      => 1,
+                ]);
+                $actionneur->capteurs()->attach($capteur->id);
+            }
+            
+
+            \App\Models\Relai::create([
+                'machine_id'    => $machine->id,
+                'actionneur_id' => $actionneur->id,
+                'nom'           => 'Relais — ' . $act['nom'],
+                'canal'         => 'Canal auto — ' . $actionneur->id,
+                'etat'          => 0,
             ]);
         }
     }
 
-    return response()->json($machine, 201);
+    return response()->json($machine->load('actionneurs'), 201);
 }
+
+
 
     public function update(Request $request, $id)
     {

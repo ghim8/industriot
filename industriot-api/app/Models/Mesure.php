@@ -9,7 +9,5 @@ class Mesure extends Model
 
     const CREATED_AT      = 'horodatage';
 
-    protected $fillable = [
-        'machine_id', 'capteur_id', 'valeur', 'hors_seuil', 'horodatage'
-    ];
+    protected $fillable = ['machine_id', 'capteur_id', 'actionneur_id', 'valeur', 'hors_seuil'];
 }

@@ -18,6 +18,11 @@ const TYPE_CONFIG = {
   pression:    { label:'Pression',    color:'#2ed573', unit:'bar' },
 };
 
+const COURBE_COLORS = [
+  '#00d4aa', '#f5a623', '#0099ff', '#ff4757',
+  '#a855f7', '#2ed573', '#ff6b35', '#00b4d8',
+];
+
 const TypeIcon = ({ type, size=16 }) => {
   const color = TYPE_CONFIG[type]?.color || '#7a8394';
   const icons = {
@@ -34,23 +39,17 @@ const TypeIcon = ({ type, size=16 }) => {
 function StatItem({ label, val }) {
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
-      <span style={{ fontFamily:'monospace', fontSize:9, color:'#4a5260', letterSpacing:1 }}>{label}</span>
-      <span style={{ fontFamily:'monospace', fontSize:12, color:'#e8eaf0', fontWeight:600 }}>{val}</span>
+      <span style={{ fontSize:9, color:'#4a5260', letterSpacing:1, textTransform:'uppercase' }}>{label}</span>
+      <span style={{ fontSize:12, color:'#e8eaf0', fontWeight:600 }}>{val}</span>
     </div>
   );
 }
-// Récupère la valeur MQTT live si disponible
-function getMqttValeur(machineId, type, fallback) {
-  if (mesures[machineId]?.[type]) {
-    return mesures[machineId][type].valeur;
-  }
-  return fallback;
-}
 
-export default function PageMesures({ mesures = {} }) {  const { user }   = useAuth();
+export default function PageMesures({ mesures = {}, defaultMachineId = null }) {
+  const { user }   = useAuth();
   const [machines, setMachines]        = useState([]);
   const [selectedMachine, setSelected] = useState(null);
-  const [data, setData]                = useState([]);
+  const [grouped, setGrouped]          = useState({});
   const [loading, setLoading]          = useState(false);
   const [live, setLive]                = useState(false);
   const [lastUpdate, setLastUpdate]    = useState(null);
@@ -63,10 +62,14 @@ export default function PageMesures({ mesures = {} }) {  const { user }   = useA
   useEffect(() => {
     api.get('/machines').then(r => {
       setMachines(r.data);
-      if (r.data.length > 0) selectMachine(r.data[0]);
+      // Sélectionner la machine passée en paramètre ou la première
+      const target = defaultMachineId
+        ? r.data.find(m => m.id === defaultMachineId)
+        : r.data[0];
+      if (target) selectMachine(target);
     });
     return () => { stopLive(); stopAutoRefresh(); };
-  }, []);
+}, []);
 
   useEffect(() => {
     stopAutoRefresh();
@@ -81,7 +84,7 @@ export default function PageMesures({ mesures = {} }) {  const { user }   = useA
   const fetchMesures = (id) => {
     setLoading(true);
     api.get(`/mesures?machine_id=${id}`).then(r => {
-      setData(r.data);
+      setGrouped(r.data);
       setLastUpdate(new Date().toTimeString().slice(0,8));
       setLoading(false);
     });
@@ -89,7 +92,7 @@ export default function PageMesures({ mesures = {} }) {  const { user }   = useA
 
   const fetchMesuresSilent = (id) => {
     api.get(`/mesures?machine_id=${id}`).then(r => {
-      setData(r.data);
+      setGrouped(r.data);
       setLastUpdate(new Date().toTimeString().slice(0,8));
     });
   };
@@ -105,7 +108,8 @@ export default function PageMesures({ mesures = {} }) {  const { user }   = useA
     liveRef.current = setInterval(async () => {
       if (!selectedRef.current) return;
       const res = await api.get('/capteurs');
-      const capteurs = res.data.filter(c => c.machine_id === selectedRef.current.id && c.actif);
+      const capteurs = res.data.flatMap(g => g.capteurs || [])
+                              .filter(c => c.machine_id === selectedRef.current.id && c.actif);
       for (const capteur of capteurs) {
         const base = { temperature:65, humidite:55, courant:12, vibration:0.5, gaz:120, pression:3.5 }[capteur.type] || 50;
         const valeur = +(base + (Math.random() - 0.5) * 10).toFixed(3);
@@ -115,24 +119,13 @@ export default function PageMesures({ mesures = {} }) {  const { user }   = useA
     }, 3000);
   };
 
-  const stopLive = () => {
-    if (liveRef.current) { clearInterval(liveRef.current); liveRef.current = null; }
-    setLive(false);
-  };
+  const stopLive    = () => { if (liveRef.current)    { clearInterval(liveRef.current);    liveRef.current    = null; } setLive(false); };
+  const stopAutoRefresh = () => { if (refreshRef.current) { clearInterval(refreshRef.current); refreshRef.current = null; } };
 
-  const stopAutoRefresh = () => {
-    if (refreshRef.current) { clearInterval(refreshRef.current); refreshRef.current = null; }
-  };
-
-  const totalCapteurs  = data.length;
-  const horsSeuilCount = data.filter(d => d.derniere?.hors_seuil).length;
-
-  // Séparer temp+hum des autres
-  const tempItem = data.find(d => d.capteur?.type === 'temperature');
-  const humItem  = data.find(d => d.capteur?.type === 'humidite');
-  const others   = data.filter(d => d.capteur?.type !== 'temperature' && d.capteur?.type !== 'humidite' && d.mesures?.length > 0);
-
-  const hasTempHum = (tempItem?.mesures?.length > 0) || (humItem?.mesures?.length > 0);
+  const totalTypes    = Object.keys(grouped).length;
+  const totalCapteurs = Object.values(grouped).reduce((acc, items) => acc + items.length, 0);
+  const horsSeuilCount = Object.values(grouped).reduce((acc, items) =>
+    acc + items.filter(i => i.derniere?.hors_seuil).length, 0);
 
   return (
     <div>
@@ -142,7 +135,7 @@ export default function PageMesures({ mesures = {} }) {  const { user }   = useA
           <div style={S.headerTitle}>Mesures temps réel</div>
           <div style={S.headerSub}>
             {selectedMachine ? selectedMachine.nom : 'Sélectionne une machine'}
-            {totalCapteurs > 0 && ` · ${totalCapteurs} capteur(s)`}
+            {totalCapteurs > 0 && ` · ${totalCapteurs} capteur(s) · ${totalTypes} type(s)`}
           </div>
         </div>
         <div style={{display:'flex', alignItems:'center', gap:8}}>
@@ -152,33 +145,11 @@ export default function PageMesures({ mesures = {} }) {  const { user }   = useA
               <span style={S.updateTime}>màj {lastUpdate}</span>
             </div>
           )}
-          {Object.keys(mesures).length > 0 && (
-  <div style={{
-    display:'flex', alignItems:'center', gap:6,
-    padding:'5px 10px',
-    background:'rgba(0,212,170,0.08)',
-    border:'1px solid rgba(0,212,170,0.20)',
-    borderRadius:6
-  }}>
-    <div style={{
-      width:6, height:6, borderRadius:'50%',
-      background:'#00d4aa',
-      boxShadow:'0 0 6px #00d4aa',
-      animation:'pulse 2s infinite'
-    }}/>
-    <span style={{ fontSize:10, fontFamily:'monospace', color:'#00d4aa' }}>
-      MQTT LIVE
-    </span>
-  </div>
-)}
-          <button
-            style={{...S.btnToggle,
-              background:   autoRefresh ? 'rgba(46,213,115,0.10)' : 'rgba(255,255,255,0.05)',
-              borderColor:  autoRefresh ? 'rgba(46,213,115,0.25)' : 'rgba(255,255,255,0.10)',
-              color:        autoRefresh ? '#2ed573' : '#7a8394',
-            }}
-            onClick={() => setAutoRefresh(!autoRefresh)}
-          >
+          <button style={{...S.btnToggle,
+            background:  autoRefresh ? 'rgba(46,213,115,0.10)' : 'rgba(255,255,255,0.05)',
+            borderColor: autoRefresh ? 'rgba(46,213,115,0.25)' : 'rgba(255,255,255,0.10)',
+            color:       autoRefresh ? '#2ed573' : '#7a8394',
+          }} onClick={() => setAutoRefresh(!autoRefresh)}>
             {autoRefresh ? '⟳ Auto ON' : '⟳ Auto OFF'}
           </button>
           {!live ? (
@@ -192,8 +163,7 @@ export default function PageMesures({ mesures = {} }) {  const { user }   = useA
       {/* Sélecteur machine */}
       <div style={S.machineRow}>
         {machines.map(m => (
-          <button
-            key={m.id}
+          <button key={m.id}
             style={{...S.machineBtn, ...(selectedMachine?.id === m.id ? S.machineBtnActive : {})}}
             onClick={() => selectMachine(m)}
           >
@@ -204,34 +174,34 @@ export default function PageMesures({ mesures = {} }) {  const { user }   = useA
       </div>
 
       {/* Métriques */}
-      {!loading && data.length > 0 && (
+      {!loading && totalCapteurs > 0 && (
         <div style={S.metricsRow}>
           <div style={S.mcard}>
             <div style={{...S.mcardBar, background:'#0099ff'}}/>
-            <div style={S.mcardLabel}>CAPTEURS ACTIFS</div>
+            <div style={S.mcardLabel}>Types de capteurs</div>
+            <div style={S.mcardVal}>{totalTypes}</div>
+          </div>
+          <div style={S.mcard}>
+            <div style={{...S.mcardBar, background:'#00d4aa'}}/>
+            <div style={S.mcardLabel}>Capteurs actifs</div>
             <div style={S.mcardVal}>{totalCapteurs}</div>
           </div>
           <div style={S.mcard}>
             <div style={{...S.mcardBar, background: horsSeuilCount > 0 ? '#ff4757' : '#2ed573'}}/>
-            <div style={S.mcardLabel}>HORS SEUIL</div>
+            <div style={S.mcardLabel}>Hors seuil</div>
             <div style={{...S.mcardVal, color: horsSeuilCount > 0 ? '#ff4757' : '#2ed573'}}>{horsSeuilCount}</div>
           </div>
           <div style={S.mcard}>
             <div style={{...S.mcardBar, background:'#f5a623'}}/>
-            <div style={S.mcardLabel}>LOCALISATION</div>
+            <div style={S.mcardLabel}>Localisation</div>
             <div style={S.mcardValSm}>{selectedMachine?.localisation}</div>
-          </div>
-          <div style={S.mcard}>
-            <div style={{...S.mcardBar, background:'#00d4aa'}}/>
-            <div style={S.mcardLabel}>STATUT</div>
-            <div style={{...S.mcardValSm, color:'#2ed573'}}>{selectedMachine?.statut}</div>
           </div>
         </div>
       )}
 
       {loading && <div style={S.loading}>Chargement...</div>}
 
-      {!loading && data.length === 0 && (
+      {!loading && totalCapteurs === 0 && (
         <div style={S.emptyState}>
           <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#4a5260" strokeWidth="1.5">
             <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
@@ -242,153 +212,113 @@ export default function PageMesures({ mesures = {} }) {  const { user }   = useA
         </div>
       )}
 
-      {/* Graphique Température + Humidité — pleine largeur */}
-      {!loading && hasTempHum && (() => {
-        const labels = (tempItem?.mesures || humItem?.mesures || [])
-          .map(m => new Date(m.horodatage).toTimeString().slice(0,8));
-        const datasets = [];
-        if (tempItem?.mesures?.length) datasets.push({
-          label:'Température (°C)', data: tempItem.mesures.map(m => parseFloat(m.valeur)),
-          borderColor:'#f5a623', backgroundColor:'#f5a62312',
-          borderWidth:1.5, pointRadius:0, tension:0.4, fill:true, yAxisID:'y',
+      {/* Graphiques groupés par type */}
+      {!loading && Object.entries(grouped).map(([type, items]) => {
+        const cfg    = TYPE_CONFIG[type] || { label: type, color:'#00d4aa', unit:'' };
+        const labels = items[0]?.mesures?.map(m => new Date(m.horodatage).toTimeString().slice(0,8)) || [];
+
+        const datasets = items.map((item, idx) => {
+          const color = COURBE_COLORS[idx % COURBE_COLORS.length];
+          const hors  = item.derniere?.hors_seuil;
+          return {
+            label:           item.actionneur?.nom || `Capteur ${item.capteur?.id}`,
+            data:            item.mesures?.map(m => parseFloat(m.valeur)) || [],
+            borderColor:     hors ? '#ff4757' : color,
+            backgroundColor: (hors ? '#ff4757' : color) + '18',
+            borderWidth:     1.8,
+            pointRadius:     0,
+            pointHoverRadius:4,
+            tension:         0.4,
+            fill:            false,
+          };
         });
-        if (humItem?.mesures?.length) datasets.push({
-          label:'Humidité (%)', data: humItem.mesures.map(m => parseFloat(m.valeur)),
-          borderColor:'#0099ff', backgroundColor:'#0099ff12',
-          borderWidth:1.5, pointRadius:0, tension:0.4, fill:true, yAxisID:'y1',
-        });
-        const tempVal = tempItem?.derniere ? parseFloat(tempItem.derniere.valeur).toFixed(2) : null;
-        const humVal  = humItem?.derniere  ? parseFloat(humItem.derniere.valeur).toFixed(2)  : null;
+
+        // Stats globales du type
+        const allValues = items.flatMap(i => i.mesures?.map(m => parseFloat(m.valeur)) || []);
+        const min = allValues.length ? Math.min(...allValues).toFixed(2) : '—';
+        const max = allValues.length ? Math.max(...allValues).toFixed(2) : '—';
+        const horsItems = items.filter(i => i.derniere?.hors_seuil);
 
         return (
-          <div style={S.chartCardFull}>
-            <div style={S.chartHead}>
+          <div key={type} style={{...S.chartCard, borderColor: horsItems.length > 0 ? 'rgba(255,71,87,0.25)' : 'rgba(255,255,255,0.07)'}}>
+            {horsItems.length > 0 && <div style={S.alertBand}>⚠ HORS SEUIL — {horsItems.map(i => i.actionneur?.nom).join(', ')}</div>}
+
+            {/* Header */}
+            <div style={{...S.chartHead, marginTop: horsItems.length > 0 ? 16 : 0}}>
               <div style={{display:'flex', alignItems:'center', gap:12}}>
-                <div style={{display:'flex', gap:8}}>
-                  {tempItem && <div style={{...S.chartIconWrap, background:'#f5a62315', border:'1px solid #f5a62330'}}><TypeIcon type="temperature" size={16}/></div>}
-                  {humItem  && <div style={{...S.chartIconWrap, background:'#0099ff15', border:'1px solid #0099ff30'}}><TypeIcon type="humidite"    size={16}/></div>}
+                <div style={{...S.chartIconWrap, background:`${cfg.color}15`, border:`1px solid ${cfg.color}30`}}>
+                  <TypeIcon type={type} size={16}/>
                 </div>
                 <div>
-                  <div style={S.chartTitle}>Température & Humidité</div>
-                  <div style={S.chartSub}>Graphique combiné · {labels.length} points</div>
+                  <div style={S.chartTitle}>{cfg.label}</div>
+                  <div style={S.chartSub}>{items.length} actionneur(s) · unité : {items[0]?.capteur?.unite || cfg.unit}</div>
                 </div>
               </div>
-              <div style={{display:'flex', gap:20}}>
-                {tempVal && (
-                  <div style={{textAlign:'right'}}>
-                    <div style={{fontSize:11, fontFamily:'monospace', color:'#7a8394'}}>Température</div>
-                    <div style={{fontSize:20, fontWeight:600, fontFamily:'monospace', color: tempItem?.derniere?.hors_seuil ? '#ff4757' : '#f5a623'}}>
-                      {tempVal} <span style={{fontSize:11, color:'#7a8394'}}>°C</span>
+
+              {/* Dernières valeurs par actionneur */}
+              <div style={{display:'flex', gap:16, flexWrap:'wrap'}}>
+                {items.map((item, idx) => {
+                  const color    = COURBE_COLORS[idx % COURBE_COLORS.length];
+                  const derniere = item.derniere ? parseFloat(item.derniere.valeur).toFixed(2) : '—';
+                  const hors     = item.derniere?.hors_seuil;
+                  return (
+                    <div key={item.capteur?.id} style={{textAlign:'right'}}>
+                      <div style={{fontSize:10, color:'#7a8394', marginBottom:2, display:'flex', alignItems:'center', gap:5, justifyContent:'flex-end'}}>
+                        <span style={{width:8, height:8, borderRadius:'50%', background: hors ? '#ff4757' : color, display:'inline-block'}}/>
+                        {item.actionneur?.nom || 'Sans actionneur'}
+                      </div>
+                      <div style={{fontSize:18, fontWeight:600, color: hors ? '#ff4757' : color}}>
+                        {derniere} <span style={{fontSize:11, color:'#7a8394'}}>{item.capteur?.unite}</span>
+                      </div>
                     </div>
-                  </div>
-                )}
-                {humVal && (
-                  <div style={{textAlign:'right'}}>
-                    <div style={{fontSize:11, fontFamily:'monospace', color:'#7a8394'}}>Humidité</div>
-                    <div style={{fontSize:20, fontWeight:600, fontFamily:'monospace', color: humItem?.derniere?.hors_seuil ? '#ff4757' : '#0099ff'}}>
-                      {humVal} <span style={{fontSize:11, color:'#7a8394'}}>%</span>
-                    </div>
-                  </div>
-                )}
+                  );
+                })}
               </div>
             </div>
-            <div style={{height:220}}>
+
+            {/* Stats */}
+            <div style={S.statsRow}>
+              <StatItem label="Min global" val={`${min} ${items[0]?.capteur?.unite || ''}`}/>
+              <StatItem label="Max global" val={`${max} ${items[0]?.capteur?.unite || ''}`}/>
+              <StatItem label="Points" val={labels.length}/>
+              {items[0]?.capteur?.seuil_min !== null && <StatItem label="Seuil min" val={`${items[0]?.capteur?.seuil_min} ${items[0]?.capteur?.unite || ''}`}/>}
+              {items[0]?.capteur?.seuil_max !== null && <StatItem label="Seuil max" val={`${items[0]?.capteur?.seuil_max} ${items[0]?.capteur?.unite || ''}`}/>}
+            </div>
+
+            {/* Légende couleurs */}
+            <div style={S.legendRow}>
+              {items.map((item, idx) => (
+                <div key={idx} style={S.legendItem}>
+                  <span style={{width:20, height:2, background: COURBE_COLORS[idx % COURBE_COLORS.length], display:'inline-block', borderRadius:1}}/>
+                  <span style={{fontSize:11, color:'#7a8394'}}>{item.actionneur?.nom || 'Sans actionneur'}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Graphique */}
+            <div style={{height:200}}>
               <Line data={{labels, datasets}} options={{
                 responsive:true, maintainAspectRatio:false,
                 interaction:{ mode:'index', intersect:false },
                 plugins:{
-                  legend:{ display:true, labels:{ color:'#7a8394', font:{ family:'monospace', size:10 }, boxWidth:12 } },
-                  tooltip:{ backgroundColor:'#1c2129', borderColor:'rgba(255,255,255,0.1)', borderWidth:1, titleColor:'#e8eaf0', bodyColor:'#7a8394' },
+                  legend:{ display:false },
+                  tooltip:{
+                    backgroundColor:'#1c2129',
+                    borderColor:'rgba(255,255,255,0.1)',
+                    borderWidth:1,
+                    titleColor:'#e8eaf0',
+                    bodyColor:'#7a8394',
+                  },
                 },
                 scales:{
-                  x:  { grid:{ color:'rgba(255,255,255,0.03)' }, ticks:{ color:'#4a5260', font:{ family:'monospace', size:9 }, maxTicksLimit:8 } },
-                  y:  { grid:{ color:'rgba(255,255,255,0.03)' }, ticks:{ color:'#f5a623', font:{ family:'monospace', size:9 } }, position:'left'  },
-                  y1: { grid:{ display:false },                  ticks:{ color:'#0099ff', font:{ family:'monospace', size:9 } }, position:'right' },
+                  x:{ grid:{ color:'rgba(255,255,255,0.03)' }, ticks:{ color:'#4a5260', font:{ size:9 }, maxTicksLimit:8 } },
+                  y:{ grid:{ color:'rgba(255,255,255,0.03)' }, ticks:{ color:'#4a5260', font:{ size:9 } } },
                 },
               }}/>
             </div>
           </div>
         );
-      })()}
-
-      {/* Autres graphiques — 2 par ligne */}
-      {!loading && others.length > 0 && (
-        <div style={S.chartsGrid2}>
-          {others.map(item => {
-            const cfg    = TYPE_CONFIG[item.capteur.type] || { color:'#00d4aa', label: item.capteur.type };
-            const labels = item.mesures.map(m => new Date(m.horodatage).toTimeString().slice(0,8));
-            const values = item.mesures.map(m => parseFloat(m.valeur));
-            const mqttVal = mesures[selectedMachine?.id]?.[item.capteur.type]?.valeur;
-            const derniereVal = mqttVal 
-              ? parseFloat(mqttVal).toFixed(3)
-              : item.derniere 
-                ? parseFloat(item.derniere.valeur).toFixed(3) 
-                : '—';
-            const hors = mesures[selectedMachine?.id]?.[item.capteur.type]?.hors_seuil 
-              ?? item.derniere?.hors_seuil;
-            const min    = Math.min(...values);
-            const max    = Math.max(...values);
-            const avg    = (values.reduce((a,b) => a+b, 0) / values.length).toFixed(2);
-
-            return (
-              <div key={item.capteur.id} style={{
-                ...S.chartCard,
-                borderColor: hors ? 'rgba(255,71,87,0.25)' : 'rgba(255,255,255,0.07)',
-              }}>
-                {hors && <div style={S.alertBand}>⚠ HORS SEUIL</div>}
-                <div style={{...S.chartHead, marginTop: hors ? 16 : 0}}>
-                  <div style={{display:'flex', alignItems:'center', gap:10}}>
-                    <div style={{...S.chartIconWrap, background:`${cfg.color}15`, border:`1px solid ${cfg.color}30`}}>
-                      <TypeIcon type={item.capteur.type} size={16}/>
-                    </div>
-                    <div>
-                      <div style={S.chartTitle}>{cfg.label}</div>
-                      <div style={S.chartSub}>{item.capteur.unite} · {labels.length} points</div>
-                    </div>
-                  </div>
-                  <div style={{textAlign:'right'}}>
-                    <div style={{...S.chartVal, color: hors ? '#ff4757' : cfg.color}}>
-                      {derniereVal}<span style={S.chartUnit}> {item.capteur.unite}</span>
-                    </div>
-                    <div style={{fontSize:10, fontFamily:'monospace', color: hors ? '#ff4757' : '#2ed573'}}>
-                      {hors ? '● Hors seuil' : '● Normal'}
-                    </div>
-                  </div>
-                </div>
-                <div style={S.statsRow}>
-                  <StatItem label="MIN" val={min.toFixed(2)}/>
-                  <StatItem label="MOY" val={avg}/>
-                  <StatItem label="MAX" val={max.toFixed(2)}/>
-                  {item.capteur.seuil_min !== null && <StatItem label="SEUIL MIN" val={item.capteur.seuil_min}/>}
-                  {item.capteur.seuil_max !== null && <StatItem label="SEUIL MAX" val={item.capteur.seuil_max}/>}
-                </div>
-                <div style={{height:160}}>
-                  <Line data={{
-                    labels,
-                    datasets:[{
-                      label: cfg.label,
-                      data: values,
-                      borderColor: hors ? '#ff4757' : cfg.color,
-                      backgroundColor: (hors ? '#ff4757' : cfg.color) + '12',
-                      borderWidth:1.5, pointRadius:0, tension:0.4, fill:true, yAxisID:'y',
-                    }]
-                  }} options={{
-                    responsive:true, maintainAspectRatio:false,
-                    plugins:{
-                      legend:{ display:false },
-                      tooltip:{ backgroundColor:'#1c2129', borderColor:'rgba(255,255,255,0.1)', borderWidth:1, titleColor:'#e8eaf0', bodyColor:'#7a8394' },
-                    },
-                    scales:{
-                      x:{ grid:{ color:'rgba(255,255,255,0.03)' }, ticks:{ color:'#4a5260', font:{ family:'monospace', size:9 }, maxTicksLimit:6 } },
-                      y:{ grid:{ color:'rgba(255,255,255,0.03)' }, ticks:{ color:'#4a5260', font:{ family:'monospace', size:9 } } },
-                    },
-                  }}/>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+      })}
     </div>
   );
 }
@@ -399,31 +329,29 @@ const S = {
   headerSub:       { fontSize:12, color:'#7a8394', marginTop:4 },
   updateTag:       { display:'flex', alignItems:'center', gap:5, padding:'5px 10px', background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.07)', borderRadius:6 },
   updateDot:       { width:6, height:6, borderRadius:'50%' },
-  updateTime:      { fontSize:10, fontFamily:'monospace', color:'#7a8394' },
-  btnToggle:       { padding:'7px 12px', border:'1px solid', borderRadius:7, fontSize:11, cursor:'pointer', fontFamily:'monospace' },
-  btnLive:         { padding:'8px 14px', background:'rgba(46,213,115,0.10)', border:'1px solid rgba(46,213,115,0.25)', borderRadius:7, color:'#2ed573', fontSize:12, cursor:'pointer', fontFamily:'monospace' },
-  btnStop:         { padding:'8px 14px', background:'rgba(255,71,87,0.10)', border:'1px solid rgba(255,71,87,0.25)', borderRadius:7, color:'#ff4757', fontSize:12, cursor:'pointer', fontFamily:'monospace' },
+  updateTime:      { fontSize:10, color:'#7a8394' },
+  btnToggle:       { padding:'7px 12px', border:'1px solid', borderRadius:7, fontSize:11, cursor:'pointer' },
+  btnLive:         { padding:'8px 14px', background:'rgba(46,213,115,0.10)', border:'1px solid rgba(46,213,115,0.25)', borderRadius:7, color:'#2ed573', fontSize:12, cursor:'pointer' },
+  btnStop:         { padding:'8px 14px', background:'rgba(255,71,87,0.10)', border:'1px solid rgba(255,71,87,0.25)', borderRadius:7, color:'#ff4757', fontSize:12, cursor:'pointer' },
   machineRow:      { display:'flex', gap:8, marginBottom:20, flexWrap:'wrap' },
-  machineBtn:      { display:'flex', alignItems:'center', gap:7, padding:'8px 14px', background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:8, color:'#7a8394', fontSize:12, cursor:'pointer', fontFamily:'monospace' },
+  machineBtn:      { display:'flex', alignItems:'center', gap:7, padding:'8px 14px', background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:8, color:'#7a8394', fontSize:12, cursor:'pointer' },
   machineBtnActive:{ background:'rgba(0,212,170,0.08)', borderColor:'rgba(0,212,170,0.25)', color:'#00d4aa' },
   machineDot:      { width:6, height:6, borderRadius:'50%', flexShrink:0 },
   metricsRow:      { display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:14, marginBottom:20 },
   mcard:           { background:'#161b22', border:'1px solid rgba(255,255,255,0.07)', borderRadius:10, padding:'16px 18px', position:'relative', overflow:'hidden' },
   mcardBar:        { position:'absolute', top:0, left:0, right:0, height:2 },
-  mcardLabel:      { fontFamily:'monospace', fontSize:9, color:'#4a5260', letterSpacing:1.5, textTransform:'uppercase', marginBottom:10 },
-  mcardVal:        { fontSize:26, fontWeight:600, color:'#e8eaf0', fontFamily:'monospace' },
-  mcardValSm:      { fontSize:13, fontWeight:600, color:'#e8eaf0', fontFamily:'monospace', marginTop:2 },
+  mcardLabel:      { fontSize:11, color:'#4a5260', textTransform:'uppercase', marginBottom:10, fontWeight:500 },
+  mcardVal:        { fontSize:26, fontWeight:700, color:'#e8eaf0' },
+  mcardValSm:      { fontSize:13, fontWeight:600, color:'#e8eaf0', marginTop:2 },
   loading:         { color:'#7a8394', textAlign:'center', marginTop:60 },
   emptyState:      { textAlign:'center', marginTop:60, color:'#7a8394' },
-  chartCardFull:   { background:'#161b22', border:'1px solid rgba(255,255,255,0.07)', borderRadius:10, padding:'18px 20px', marginBottom:16 },
-  chartsGrid2:     { display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:16, marginBottom:16 },
-  chartCard:       { background:'#161b22', border:'1px solid', borderRadius:10, padding:'18px 20px', position:'relative', overflow:'hidden' },
-  alertBand:       { position:'absolute', top:0, left:0, right:0, background:'rgba(255,71,87,0.12)', color:'#ff4757', fontSize:10, fontFamily:'monospace', padding:'3px 0', textAlign:'center', letterSpacing:1 },
-  chartHead:       { display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 },
+  chartCard:       { background:'#161b22', border:'1px solid', borderRadius:10, padding:'18px 20px', marginBottom:16, position:'relative', overflow:'hidden' },
+  alertBand:       { position:'absolute', top:0, left:0, right:0, background:'rgba(255,71,87,0.12)', color:'#ff4757', fontSize:10, padding:'3px 0', textAlign:'center', letterSpacing:1 },
+  chartHead:       { display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:12, flexWrap:'wrap', gap:10 },
   chartIconWrap:   { width:32, height:32, borderRadius:7, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 },
   chartTitle:      { fontSize:13, fontWeight:600, color:'#e8eaf0' },
-  chartSub:        { fontSize:10, color:'#7a8394', fontFamily:'monospace', marginTop:2 },
-  chartVal:        { fontSize:20, fontWeight:600, fontFamily:'monospace' },
-  chartUnit:       { fontSize:11, color:'#7a8394' },
-  statsRow:        { display:'flex', gap:16, marginBottom:12, padding:'8px 12px', background:'rgba(255,255,255,0.02)', borderRadius:6 },
+  chartSub:        { fontSize:10, color:'#7a8394', marginTop:2 },
+  statsRow:        { display:'flex', gap:16, marginBottom:10, padding:'8px 12px', background:'rgba(255,255,255,0.02)', borderRadius:6, flexWrap:'wrap' },
+  legendRow:       { display:'flex', gap:14, marginBottom:12, flexWrap:'wrap' },
+  legendItem:      { display:'flex', alignItems:'center', gap:6 },
 };

@@ -12,7 +12,11 @@ import PageRelais from './sections/PageRelais';
 import PageAlertes from './sections/PageAlertes';
 import PageCapteurs from './sections/PageCapteurs';
 import PageMesures from './sections/PageMesures';
+import PageSuperAdmin from './sections/PageSuperAdmin';
+
 import { useMqtt } from '../hooks/useMqtt';
+import { useSessionTimeout } from '../hooks/useSessionTimeout';
+import SessionExpiredModal from '../components/SessionExpiredModal';
 
 
 // ── Icons SVG inline ──────────────────────────────────────────
@@ -24,15 +28,18 @@ const IconUsers   = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentCo
 const IconHistory = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>;
 const IconLogout  = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>;
 
+
 // ── Sidebar ───────────────────────────────────────────────────
 function Sidebar({ active, setActive, user, logout, alertCount }) {
+  const { entreprise } = useAuth();
   const roleStyle = {
     admin:    { background:'rgba(0,212,170,0.10)',  color:'#00d4aa', border:'1px solid rgba(0,212,170,0.20)' },
     chef:     { background:'rgba(0,153,255,0.10)',  color:'#0099ff', border:'1px solid rgba(0,153,255,0.20)' },
     operateur:{ background:'rgba(245,166,35,0.12)', color:'#f5a623', border:'1px solid rgba(245,166,35,0.25)' },
   };
-
-  const navItems = [
+const navItems = user?.role === 'super_admin' ? [
+  { id:'super-admin', label:'Entreprises', icon:<IconUsers /> },
+] : [
   { id:'dashboard', label:'Tableau de bord', icon:<IconDash /> },
   { id:'machines',  label:'Machines',        icon:<IconMachine /> },
   { id:'alertes',   label:'Alertes',         icon:<IconAlerte />, badge: alertCount },
@@ -55,12 +62,29 @@ function Sidebar({ active, setActive, user, logout, alertCount }) {
     <div style={S.sidebar}>
       {/* Brand */}
       <div style={S.sbBrand}>
-        <div style={S.sbLogo}>INDUSTRIOT</div>
-        <div style={S.sbTitle}>Supervision IoT</div>
-        <span style={{...S.sbRole, ...roleStyle[user?.role]}}>
-          {user?.role?.toUpperCase()}
-        </span>
-      </div>
+  <div style={S.sbLogo}>INDUSTRIOT</div>
+  <div style={S.sbTitle}>Supervision IoT</div>
+  
+  {/* Nom entreprise */}
+  {user?.entreprise?.nom && (
+    <div style={{
+      marginTop:8,
+      fontSize:11,
+      color:'#00d4aa',
+      background:'rgba(0,212,170,0.08)',
+      border:'1px solid rgba(0,212,170,0.15)',
+      borderRadius:5,
+      padding:'4px 8px',
+      display:'inline-block',
+    }}>
+      🏢 {user.entreprise.nom}
+    </div>
+  )}
+  
+  <span style={{...S.sbRole, ...roleStyle[user?.role]}}>
+    {user?.role?.toUpperCase()}
+  </span>
+</div>
 
       {/* Nav */}
       <nav style={S.sbNav}>
@@ -119,7 +143,8 @@ function Sidebar({ active, setActive, user, logout, alertCount }) {
 }
 
 // ── Topbar ────────────────────────────────────────────────────
-function Topbar({ title, alertCount, setActive, mqttConnected }) {  const [time, setTime] = useState(new Date().toTimeString().slice(0,8));
+function Topbar({ title, alertCount, setActive, mqttConnected, user }) {
+  const [time, setTime] = useState(new Date().toTimeString().slice(0,8));
   useEffect(() => {
     const t = setInterval(() => setTime(new Date().toTimeString().slice(0,8)), 1000);
     return () => clearInterval(t);
@@ -134,21 +159,41 @@ function Topbar({ title, alertCount, setActive, mqttConnected }) {  const [time,
       </div>
       <div style={{display:'flex', alignItems:'center', gap:12}}>
         <span style={S.clock}>{time}</span>
-        <button style={S.notifBtn} onClick={() => setActive('alertes')}>
-          🔔
-          {alertCount > 0 && <span style={S.notifCount}>{alertCount}</span>}
-        </button>
+
+        {/* Notification alertes — masqué pour super_admin */}
+        {user?.role !== 'super_admin' && (
+          <button style={S.notifBtn} onClick={() => setActive('alertes')}>
+            🔔
+            {alertCount > 0 && <span style={S.notifCount}>{alertCount}</span>}
+          </button>
+        )}
+
+        {/* MQTT — masqué pour super_admin */}
+        {user?.role !== 'super_admin' && (
+          <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+            <div style={{
+              width:7, height:7, borderRadius:'50%',
+              background: mqttConnected ? '#00d4aa' : '#ff4757',
+              boxShadow:  mqttConnected ? '0 0 6px #00d4aa' : 'none',
+            }}/>
+            <span style={{ fontFamily:'Segoe UI', fontSize:10, color: mqttConnected ? '#00d4aa' : '#ff4757' }}>
+              {mqttConnected ? 'MQTT LIVE' : 'MQTT OFF'}
+            </span>
+          </div>
+        )}
+
+        {/* Nom entreprise */}
+        {user?.entreprise?.nom && (
+          <div style={{
+            fontSize:11, color:'#00d4aa',
+            background:'rgba(0,212,170,0.08)',
+            border:'1px solid rgba(0,212,170,0.20)',
+            borderRadius:6, padding:'4px 10px',
+          }}>
+            🏢 {user.entreprise.nom}
+          </div>
+        )}
       </div>
-      <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-  <div style={{
-    width:7, height:7, borderRadius:'50%',
-    background: mqttConnected ? '#00d4aa' : '#ff4757',
-    boxShadow:  mqttConnected ? '0 0 6px #00d4aa' : 'none',
-  }}/>
-  <span style={{ fontFamily:'Segoe UI', fontSize:10, color: mqttConnected ? '#00d4aa' : '#ff4757' }}>
-    {mqttConnected ? 'MQTT LIVE' : 'MQTT OFF'}
-  </span>
-</div>
     </div>
   );
 }
@@ -171,11 +216,29 @@ mesures: 'Mesures temps réel',
 // ── Dashboard principal ───────────────────────────────────────
 export default function Dashboard() {
   const { user, logout } = useAuth();
+  const [sessionExpired, setSessionExpired] = useState(false);
+  const [sessionWarning, setSessionWarning] = useState(false);
+  const [secondsLeft, setSecondsLeft]       = useState(60);
+  const { resetTimer } = useSessionTimeout({
+  role:      user?.role,
+  onExpire:  () => {
+    console.log('🔴 onExpire appelé !');
+    setSessionWarning(false);
+    setSessionExpired(true);
+  },
+  onWarning: (secs) => {
+    console.log('🟡 onWarning appelé !', secs);
+    setSessionWarning(true);
+    setSecondsLeft(secs);
+  },
+}); 
   const { connected, mesures } = useMqtt();
-  const [active, setActive]   = useState('dashboard');
+  const [active, setActive] = useState(
+    user?.role === 'super_admin' ? 'super-admin' : 'dashboard'
+);
   const [machines, setMachines] = useState([]);
   const [alertCount, setAlertCount] = useState(0);
-
+  const [selectedMachineId, setSelectedMachineId] = useState(null);
   useEffect(() => {
     api.get('/machines').then(r => setMachines(r.data));
     api.get('/alertes').then(r => {
@@ -184,24 +247,48 @@ export default function Dashboard() {
   }, []);
 
   const renderPage = () => {
-    switch(active) {
-      case 'dashboard':      return <PageDashboard mesures={mesures} />;
-      case 'machines': return <PageMachines mesures={mesures} />;
-      case 'alertes':        return <PageAlertes />;
-      case 'relais':         return <PageRelais />;
-      case 'historique':     return <PageHistorique />;
-      case 'utilisateurs':   return <PageUtilisateurs />;
-      case 'chefs':          return <PageChefs />;
-      case 'operateurs':     return <PageOperateurs />;
-      case 'mes-operateurs': return <PageMesOperateurs />;
-      case 'capteurs':       return <PageCapteurs />;
-      case 'mesures':        return <PageMesures mesures={mesures} />;
-      default:               return <PageDashboard mesures={mesures} />;
-    }
-  };
+  switch(active) {
+    case 'dashboard':      return <PageDashboard mqttMesures={mesures} setActive={setActive} setSelectedMachineId={setSelectedMachineId} />;
+    case 'machines':       return <PageMachines mesures={mesures} />;
+    case 'alertes':        return <PageAlertes />;
+    case 'relais':         return <PageRelais />;
+    case 'historique':     return <PageHistorique />;
+    case 'utilisateurs':   return <PageUtilisateurs />;
+    case 'super-admin':    return <PageSuperAdmin />;
+    case 'chefs':          return <PageChefs />;
+    case 'operateurs':     return <PageOperateurs />;
+    case 'mes-operateurs': return <PageMesOperateurs />;
+    case 'capteurs':       return <PageCapteurs />;
+    case 'mesures':        return <PageMesures mesures={mesures} defaultMachineId={selectedMachineId} />;
+    default:               return <PageDashboard mqttMesures={mesures} setActive={setActive} setSelectedMachineId={setSelectedMachineId} />;
+  }
+};
+
 
   return (
     <div style={S.app}>
+      <SessionExpiredModal
+  expired={sessionExpired}
+  warning={sessionWarning}
+  secondsLeft={secondsLeft}
+  onExpire={() => {
+    setSessionWarning(false);
+    setSessionExpired(true);
+  }}
+  onContinue={() => {
+    setSessionWarning(false);
+    resetTimer();
+  }}
+  onLogout={() => {
+    setSessionExpired(false);
+    setSessionWarning(false);
+    localStorage.removeItem('lastActivity');
+    localStorage.removeItem('activePage');
+    logout();
+  }}
+  
+/>
+
       <Sidebar
         active={active}
         setActive={setActive}
@@ -211,11 +298,12 @@ export default function Dashboard() {
       />
       <div style={S.main}>
        <Topbar
-          title={PAGE_TITLES[active]}
-          alertCount={alertCount}
-          setActive={setActive}
-          mqttConnected={connected}
-        />
+    title={PAGE_TITLES[active]}
+    alertCount={alertCount}
+    setActive={setActive}
+    mqttConnected={connected}
+    user={user}
+/>
         <div style={S.content}>
           {renderPage()}
         </div>
@@ -223,7 +311,7 @@ export default function Dashboard() {
     </div>
   );
 }
-
+  
 // ── Styles ────────────────────────────────────────────────────
 const S = {
   app:          { display:'flex', height:'100vh', background:'#1c2129', fontFamily:"'IBM Plex Sans', sans-serif", color:'#e8eaf0', overflow:'hidden' },
@@ -266,4 +354,5 @@ sbLogout:        { width:'100%', display:'flex', alignItems:'center', justifyCon
   badge:        { display:'inline-flex', fontFamily:'Segoe UI', fontSize:10, padding:'3px 8px', borderRadius:4 },
   badgeOk:      { background:'rgba(46,213,115,0.15)', color:'#2ed573' },
   badgeErr:     { background:'rgba(255,71,87,0.15)',  color:'#ff4757' },
+  sbEntreprise: { fontSize:11, color:'#f5a623', fontWeight:600, marginBottom:4, letterSpacing:0.5 },
 };

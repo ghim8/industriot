@@ -6,57 +6,83 @@ use App\Models\Utilisateur;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 
-class AuthController extends Controller
+class AuthController extends BaseController
 {
     // POST /api/login
    public function login(Request $request)
 {
     $request->validate([
-        'email'        => 'required|email',
-        'mot_de_passe' => 'required|string',
+        'email'       => 'required|email',
+        'mot_de_passe'=> 'required|string',
     ]);
 
-    $user = Utilisateur::where('email', $request->email)
-                       ->where('statut', 'ACTIF')
+    $user = Utilisateur::with('entreprise')
+                       ->where('email', $request->email)
                        ->first();
 
-    $succes = $user && Hash::check($request->mot_de_passe, $user->mot_de_passe);
-
-    // Enregistre la tentative
-    \App\Models\Connexion::create([
-        'utilisateur_id' => $succes ? $user->id : null,
-        'email_tente'    => $request->email,
-        'ip'             => $request->ip(),
-        'user_agent'     => $request->userAgent() ?? '',
-        'statut'         => $succes ? 'SUCCÈS' : 'ÉCHEC',
-        'horodatage'     => now(),
-    ]);
-
-    if (!$succes) {
+    // Vérifications
+    if (!$user || !\Hash::check($request->mot_de_passe, $user->mot_de_passe)) {
+        \App\Models\Connexion::create([
+            'email_tente' => $request->email,
+            'ip'          => $request->ip(),
+            'statut'      => 'ÉCHEC',
+        ]);
         return response()->json(['message' => 'Email ou mot de passe incorrect'], 401);
     }
 
-    $token = $user->createToken('auth_token')->plainTextToken;
+    if ($user->statut !== 'ACTIF') {
+        return response()->json(['message' => 'Compte inactif'], 403);
+    }
 
-   return response()->json([
-    'token' => $token,
-    'user'  => [
-        'id'         => $user->id,
-        'nom'        => $user->nom,
-        'email'      => $user->email,
-        'role'       => $user->role,
-        'initiales'  => $user->initiales,
-        'mdp_change' => $user->mdp_change,
-    ]
-]);
+    // Vérifier que l'entreprise est active (sauf super_admin)
+    if ($user->role !== 'super_admin' && $user->entreprise && !$user->entreprise->actif) {
+        return response()->json(['message' => 'Entreprise désactivée'], 403);
+    }
+
+    // Supprimer les anciens tokens pour éviter les conflits
+$user->tokens()->delete();
+$token = $user->createToken('auth_token')->plainTextToken;
+
+    // Log connexion
+    \App\Models\Connexion::create([
+        'utilisateur_id' => $user->id,
+        'email_tente'    => $user->email,
+        'ip'             => $request->ip(),
+        'statut'         => 'SUCCÈS',
+        'entreprise_id'  => $user->entreprise_id,
+    ]);
+
+    return response()->json([
+        'token' => $token,
+        'user'  => [
+            'id'            => $user->id,
+            'nom'           => $user->nom,
+            'email'         => $user->email,
+            'role'          => $user->role,
+            'initiales'     => $user->initiales,
+            'mdp_change'    => (int) $user->mdp_change,
+            'entreprise_id' => $user->entreprise_id,
+            'entreprise'    => $user->entreprise ? [
+                'id'   => $user->entreprise->id,
+                'nom'  => $user->entreprise->nom,
+                'slug' => $user->entreprise->slug,
+                'logo' => $user->entreprise->logo,
+            ] : null,
+        ]
+    ]);
 }
     // POST /api/logout
     public function logout(Request $request)
-    {
-        $request->user()->currentAccessToken()->delete();
-        return response()->json(['message' => 'Déconnecté avec succès']);
+{
+    try {
+        if ($request->user()) {
+            $request->user()->currentAccessToken()->delete();
+        }
+    } catch (\Exception $e) {
+        // ignore
     }
-
+    return response()->json(['message' => 'Déconnecté avec succès']);
+}
     // GET /api/me
     public function me(Request $request)
     {
@@ -65,15 +91,15 @@ class AuthController extends Controller
     public function changerMdp(Request $request)
 {
     $request->validate([
-        'user_id'      => 'required|integer',
-        'nouveau_mdp'  => 'required|string|min:6',
+        'utilisateur_id' => 'required|integer',
+        'nouveau_mdp'    => 'required|string|min:6',
     ]);
 
-    $user = Utilisateur::findOrFail($request->user_id);
-    $user->mot_de_passe = Hash::make($request->nouveau_mdp);
+    $user = \App\Models\Utilisateur::findOrFail($request->utilisateur_id);
+    $user->mot_de_passe = \Hash::make($request->nouveau_mdp);
     $user->mdp_change   = 1;
     $user->save();
 
-    return response()->json(['message' => 'Mot de passe modifié avec succès']);
+    return response()->json(['message' => 'Mot de passe changé avec succès']);
 }
 }

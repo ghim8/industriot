@@ -7,36 +7,43 @@ use App\Models\Affectation;
 use App\Models\Utilisateur;
 use Illuminate\Http\Request;
 
-class ConnexionController extends Controller
+class ConnexionController extends BaseController
 {
-    public function index(Request $request)
-    {
-        $userId = $request->query('user_id');
-        $user   = $userId ? Utilisateur::find($userId) : null;
+   public function index(Request $request)
+{
+    $userId = $request->query('user_id');
+    $user   = $userId ? \App\Models\Utilisateur::find($userId) : null;
 
-        if (!$user || $user->role === 'admin') {
-            $connexions = Connexion::orderBy('horodatage', 'desc')->limit(100)->get();
-        } elseif ($user->role === 'chef') {
-            // Ses opérateurs
-            $machineIds    = Affectation::where('utilisateur_id', $user->id)->pluck('machine_id');
-            $operateurIds  = Affectation::whereIn('machine_id', $machineIds)
-                                        ->pluck('utilisateur_id')
-                                        ->unique();
-            $userIds = $operateurIds->push($user->id)->unique();
-            $connexions = Connexion::whereIn('utilisateur_id', $userIds)
-                                   ->orderBy('horodatage', 'desc')
-                                   ->limit(100)
-                                   ->get();
-        } else {
-            // Opérateur — ses connexions uniquement
-            $connexions = Connexion::where('utilisateur_id', $user->id)
-                                   ->orderBy('horodatage', 'desc')
-                                   ->limit(100)
-                                   ->get();
-        }
+    if (!$user || $user->role === 'admin') {
+        $connexions = \App\Models\Connexion::orderBy('horodatage', 'desc')
+                                           ->limit(200)
+                                           ->get();
 
-        return response()->json($connexions);
+    } elseif ($user->role === 'chef') {
+        // Récupérer les opérateurs de ce chef via chef_id
+        $operateurIds = \App\Models\Utilisateur::where('chef_id', $user->id)
+                                               ->where('role', 'operateur')
+                                               ->pluck('id');
+
+        // Inclure aussi le chef lui-même
+        $userIds = $operateurIds->push($user->id);
+
+        $connexions = \App\Models\Connexion::with('utilisateur')
+                                   ->whereIn('utilisateur_id', $userIds)
+                                   ->orderBy('horodatage', 'desc')
+                                   ->limit(200)
+                                   ->get();
+    } else {
+        // Opérateur → ses connexions uniquement
+        $connexions = \App\Models\Connexion::with('utilisateur')
+                                           ->where('utilisateur_id', $user->id)
+                                           ->orderBy('horodatage', 'desc')
+                                           ->limit(100)
+                                           ->get();
     }
+
+    return response()->json($connexions);
+}
    public function destroy($id)
 {
     Connexion::findOrFail($id)->delete();

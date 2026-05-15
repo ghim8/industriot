@@ -105,6 +105,7 @@ export default function PageHistorique() {
                 <th style={{...S.th, width:48}}>
                   <CustomCheckbox checked={toutCoche} onChange={toutSel}/>
                 </th>
+                <th style={S.th}>Utilisateur</th>
                 <th style={S.th}>Horodatage</th>
                 <th style={S.th}>Email</th>
                 <th style={S.th}>Adresse IP</th>
@@ -121,10 +122,24 @@ export default function PageHistorique() {
                     : idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)',
                 }}>
                   <td style={S.td}>
-                    <CustomCheckbox checked={selection.includes(c.id)} onChange={() => toggleSel(c.id)}/>
-                  </td>
-                  <td style={S.td}>
-                    <div style={S.dateMain}>{new Date(c.horodatage).toLocaleDateString('fr-FR')}</div>
+  <CustomCheckbox
+    checked={selection.includes(c.id)}
+    onChange={() => toggleSel(c.id)}
+  />
+</td>
+
+<td style={S.td}>
+  <div style={S.dateMain}>
+    {c.utilisateur?.nom || '—'}
+  </div>
+
+  <div style={S.dateSub}>
+    {c.utilisateur?.role || ''}
+  </div>
+</td>
+
+<td style={S.td}>
+  <div style={S.dateMain}>{new Date(c.horodatage).toLocaleDateString('fr-FR')}</div>
                     <div style={S.dateSub}>{new Date(c.horodatage).toLocaleTimeString('fr-FR')}</div>
                   </td>
                   <td style={S.td}>

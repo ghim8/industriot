@@ -6,28 +6,60 @@ use App\Models\Utilisateur;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 
-class UtilisateurController extends Controller
+class UtilisateurController extends BaseController
 {
-    public function index()
+    public function index(Request $request)
     {
-        return response()->json(Utilisateur::all());
+        $entrepriseId = $this->getEntrepriseId($request);
+        $chefId       = $request->query('chef_id');
+        $role         = $request->query('role');
+
+        $query = Utilisateur::query();
+
+        if ($entrepriseId) {
+            $query->where('entreprise_id', $entrepriseId);
+        }
+        if ($chefId) $query->where('chef_id', $chefId);
+        if ($role)   $query->where('role', $role);
+
+        return response()->json($query->get());
     }
 
-    public function operateurs()
+    public function operateurs(Request $request)
     {
-        return response()->json(Utilisateur::where('role', 'operateur')->get());
+        $entrepriseId = $this->getEntrepriseId($request);
+        $query = Utilisateur::where('role', 'operateur');
+        if ($entrepriseId) $query->where('entreprise_id', $entrepriseId);
+        return response()->json($query->get());
     }
 
     public function store(Request $request)
     {
+        $entrepriseId = $this->getEntrepriseId($request);
+        $entreprise   = \App\Models\Entreprise::find($entrepriseId);
+        $slug         = $entreprise?->slug ?? '';
+
         $request->validate([
             'nom'          => 'required|string|max:100',
-            'email'        => ['required', 'email', 'unique:utilisateurs,email', 'regex:/@usine\.local$/'],
-            'mot_de_passe' => 'required|string|min:6',
+            'mot_de_passe' => 'nullable|string|min:6',
             'role'         => 'required|in:admin,chef,operateur',
+            'chef_id'      => 'nullable|integer',
         ]);
 
-        $mots = explode(' ', trim($request->nom));
+        // Générer email automatiquement
+        $prenomSlug = strtolower(str_replace(' ', '.', trim($request->nom)));
+        $emailAuto  = $prenomSlug . '@' . $slug . '.local';
+
+        // Gérer les doublons
+        $base  = $emailAuto;
+        $count = 1;
+        while (Utilisateur::where('email', $emailAuto)->exists()) {
+            $emailAuto = str_replace('@', $count . '@', $base);
+            $count++;
+        }
+
+        // Calcul initiales
+        $mots      = explode(' ', trim($request->nom));
         $initiales = '';
         foreach ($mots as $mot) {
             $initiales .= strtoupper(mb_substr($mot, 0, 1));
@@ -35,39 +67,63 @@ class UtilisateurController extends Controller
         }
 
         $user = Utilisateur::create([
-            'nom'          => $request->nom,
-            'email'        => $request->email,
-            'mot_de_passe' => Hash::make($request->mot_de_passe),
-            'role'         => $request->role,
-            'initiales'    => $initiales,
-            'statut'       => 'ACTIF',
-            'mdp_change'   => 0,
+            'nom'           => $request->nom,
+            'email'         => $emailAuto,
+            'mot_de_passe'  => Hash::make($request->mot_de_passe ?? 'changeme123'),
+            'role'          => $request->role,
+            'initiales'     => $initiales,
+            'statut'        => 'ACTIF',
+            'mdp_change'    => 0,
+            'chef_id'       => $request->role === 'operateur' ? $request->chef_id : null,
+            'entreprise_id' => $entrepriseId,
         ]);
 
-        return response()->json($user, 201);
+        // Si opérateur → affecter aux machines du chef
+        if ($request->role === 'operateur' && $request->chef_id) {
+            $machineIds = \App\Models\Affectation::where('utilisateur_id', $request->chef_id)
+                                                 ->pluck('machine_id');
+            foreach ($machineIds as $machineId) {
+                \App\Models\Affectation::firstOrCreate([
+                    'utilisateur_id' => $user->id,
+                    'machine_id'     => $machineId,
+                ], ['affecte_par' => $request->chef_id]);
+            }
+        }
+
+        return response()->json([
+            'user'         => $user,
+            'email_genere' => $emailAuto,
+        ], 201);
     }
 
     public function update(Request $request, $id)
     {
-        $user = Utilisateur::findOrFail($id);
+        $user         = Utilisateur::findOrFail($id);
+        $entrepriseId = $this->getEntrepriseId($request);
 
-        if ($request->has('email')) {
-            if (!preg_match('/@usine\.local$/', $request->email)) {
-                return response()->json(['message' => 'L\'email doit être au format @usine.local'], 422);
-            }
+        if ($entrepriseId && $user->entreprise_id !== $entrepriseId) {
+            return response()->json(['message' => 'Accès refusé'], 403);
         }
 
-        $data = $request->except('mot_de_passe');
+        $data = $request->except('mot_de_passe', '_entreprise_id');
         if ($request->filled('mot_de_passe')) {
             $data['mot_de_passe'] = Hash::make($request->mot_de_passe);
         }
+
         $user->update($data);
         return response()->json($user);
     }
 
-    public function destroy($id)
+    public function destroy(Request $request, $id)
     {
-        Utilisateur::findOrFail($id)->delete();
+        $user         = Utilisateur::findOrFail($id);
+        $entrepriseId = $this->getEntrepriseId($request);
+
+        if ($entrepriseId && $user->entreprise_id !== $entrepriseId) {
+            return response()->json(['message' => 'Accès refusé'], 403);
+        }
+
+        $user->delete();
         return response()->json(['message' => 'Utilisateur supprimé']);
     }
 }

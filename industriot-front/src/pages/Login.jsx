@@ -215,8 +215,8 @@ const S = {
   divider:      { width:1, background:'linear-gradient(180deg, transparent, rgba(0,212,170,0.15), rgba(0,212,170,0.15), transparent)' },
 
   // Droite
-  right:        { width:460, background:'#0d1117', display:'flex', alignItems:'center', justifyContent:'center', padding:'40px 36px' },
-  formWrap:     { width:'100%', maxWidth:380, display:'flex', flexDirection:'column', alignItems:'center' },
+  right: { width:560, background:'#0d1117', display:'flex', alignItems:'center', justifyContent:'flex-start', padding:'40px 60px' },
+formWrap: { width:'100%', maxWidth:460, display:'flex', flexDirection:'column', alignItems:'center' },
 
   formHeader:   { width:'100%', marginBottom:32, textAlign:'center' },
   formLogoSmall:{ display:'none' },

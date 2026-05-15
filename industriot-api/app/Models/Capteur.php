@@ -10,7 +10,10 @@ class Capteur extends Model
     protected $fillable = [
         'machine_id', 'type', 'unite', 'seuil_min', 'seuil_max', 'actif'
     ];
-
+public function actionneurs()
+    {
+        return $this->belongsToMany(Actionneur::class, 'actionneur_capteur', 'capteur_id', 'actionneur_id');
+    }
     public function machine()
 {
     return $this->belongsTo(\App\Models\Machine::class, 'machine_id');

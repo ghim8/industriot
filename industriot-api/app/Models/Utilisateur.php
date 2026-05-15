@@ -15,8 +15,9 @@ class Utilisateur extends Authenticatable
     const UPDATED_AT = 'modifie_le';
 
     protected $fillable = [
-        'nom', 'email', 'mot_de_passe', 'role', 'initiales', 'statut'
-    ];
+    'nom', 'email', 'mot_de_passe', 'role', 'initiales',
+    'statut', 'mdp_change', 'chef_id', 'entreprise_id',
+];
 
     protected $hidden = ['mot_de_passe'];
 
@@ -24,4 +25,9 @@ class Utilisateur extends Authenticatable
     {
         return $this->mot_de_passe;
     }
+
+    public function entreprise()
+{
+    return $this->belongsTo(Entreprise::class, 'entreprise_id');
+}
 }

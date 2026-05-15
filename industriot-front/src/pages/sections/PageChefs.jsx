@@ -2,9 +2,15 @@ import React, { useEffect, useState } from 'react';
 import api from '../../api/axios';
 import { generateEmail } from '../../utils/generateEmail';
 import { validateUsineEmail } from '../../utils/validateEmail';
+import EmailField from '../../components/EmailField';
+import { useAuth } from '../../context/AuthContext';
 
 export default function PageChefs() {
   const [chefs, setChefs]               = useState([]);
+  const { user } = useAuth();
+  const slug = React.useMemo(() => 
+    user?.entreprise?.slug || 'usine'
+, [user?.entreprise?.slug]);
   const [machines, setMachines]         = useState([]);
   const [loading, setLoading]           = useState(true);
   const [showModal, setShowModal]       = useState(false);
@@ -27,17 +33,29 @@ export default function PageChefs() {
 
   const handleAddChef = async () => {
     setChefError('');
-    const emailError = validateUsineEmail(chefForm.email);
-    if (emailError) { setChefError(emailError); return; }
-    try {
-      await api.post('/chefs', chefForm);
-      setShowAddChef(false);
-      setChefForm({ nom:'', email:'', mot_de_passe:'' });
-      fetchData();
-    } catch(e) {
-      setChefError(e.response?.data?.message || 'Erreur');
+    if (!chefForm.nom.trim()) { setChefError('Le nom est obligatoire'); return; }
+    if (!chefForm.mot_de_passe) { setChefError('Le mot de passe est obligatoire'); return; }
+
+    // Vérifier le domaine email
+    const domain = chefForm.email.split('@')[1] ?? '';
+    if (domain !== `${slug}.local`) {
+        setChefError(`L'email doit être au format @${slug}.local`);
+        return;
     }
-  };
+
+    try {
+        await api.post('/chefs', {
+            nom:          chefForm.nom,
+            email:        chefForm.email,
+            mot_de_passe: chefForm.mot_de_passe,
+        });
+        setShowAddChef(false);
+        setChefForm({ nom:'', email:'', mot_de_passe:'' });
+        fetchData();
+    } catch(e) {
+        setChefError(e.response?.data?.message || 'Erreur');
+    }
+};
 
   const openModal = (chef) => {
     setSelectedChef(chef);
@@ -147,39 +165,49 @@ export default function PageChefs() {
 
       {/* Modal ajout chef */}
       {showAddChef && (
-        <div style={S.overlay}>
-          <div style={S.modal}>
+    <div style={S.overlay}>
+        <div style={S.modal}>
             <div style={S.modalHead}>
-              <span style={S.modalTitle}>Nouveau chef de maintenance</span>
-              <button style={S.modalClose} onClick={() => setShowAddChef(false)}>✕</button>
+                <span style={S.modalTitle}>Nouveau chef de maintenance</span>
+                <button style={S.modalClose} onClick={() => setShowAddChef(false)}>✕</button>
             </div>
             {chefError && <div style={S.error}>{chefError}</div>}
+
             <Field label="NOM COMPLET">
-              <input style={S.input} value={chefForm.nom}
-                onChange={e => setChefForm({
-                  ...chefForm,
-                  nom:   e.target.value,
-                  email: generateEmail(e.target.value),
-                })}
-                placeholder="" />
+                <input style={S.input} value={chefForm.nom}
+                    onChange={e => setChefForm({
+                        ...chefForm,
+                        nom:   e.target.value,
+                        email: generateEmail(e.target.value, slug)
+                    })}
+                    placeholder="Prénom Nom"/>
             </Field>
+
             <Field label="EMAIL">
-              <input style={S.input} type="email" value={chefForm.email}
-                onChange={e => setChefForm({...chefForm, email: e.target.value})}
-                placeholder="exemple@usine.local" />
-            </Field>
+  <EmailField
+    value={form.email}
+    onChange={(val) => {
+      const local = val.split('@')[0];
+      setForm({...form, email: `${local}@${slug}.local`});
+    }}
+    slug={slug}
+    style={S.input}
+  />
+</Field>
+
             <Field label="MOT DE PASSE TEMPORAIRE">
-              <input style={S.input} type="password" value={chefForm.mot_de_passe}
-                onChange={e => setChefForm({...chefForm, mot_de_passe: e.target.value})}
-                placeholder="••••••••" />
+                <input style={S.input} type="password" value={chefForm.mot_de_passe}
+                    onChange={e => setChefForm({...chefForm, mot_de_passe: e.target.value})}
+                    placeholder="••••••••"/>
             </Field>
+
             <div style={S.modalFooter}>
-              <button style={S.btnSecondary} onClick={() => setShowAddChef(false)}>Annuler</button>
-              <button style={S.btnPrimary} onClick={handleAddChef}>Créer</button>
+                <button style={S.btnSecondary} onClick={() => setShowAddChef(false)}>Annuler</button>
+                <button style={S.btnPrimary} onClick={handleAddChef}>Créer</button>
             </div>
-          </div>
         </div>
-      )}
+    </div>
+)}
     </div>
   );
 }
