@@ -17,7 +17,7 @@ export default function PageAlertes() {
     const fetchData = () => {
   Promise.all([
     api.get(`/alertes?user_id=${user?.id}`),
-    api.get(`/machines?user_id=${user?.id}`)
+    api.get('/machines')
   ]).then(([a, m]) => {
         setAlertes(a.data);
         setMachines(m.data);
@@ -28,7 +28,7 @@ export default function PageAlertes() {
     fetchData(); // Premier chargement
 
     // Refresh toutes les 10 secondes
-    const interval = setInterval(fetchData, 10000);
+    const interval = setInterval(fetchData, 5000);
 
     return () => clearInterval(interval); // Nettoyage
   }, [user?.id]);

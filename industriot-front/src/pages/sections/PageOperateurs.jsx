@@ -9,7 +9,7 @@ import { useAuth } from '../../context/AuthContext';
 export default function PageOperateurs() {
   const [operateurs, setOperateurs] = useState([]);
   const { user } = useAuth();
-const slug = React.useMemo(() => 
+  const slug = React.useMemo(() => 
     user?.entreprise?.slug || 'usine'
 , [user?.entreprise?.slug]);
   const [chefs, setChefs]           = useState([]);
@@ -18,6 +18,10 @@ const slug = React.useMemo(() =>
   const [confirm, setConfirm]       = useState(null);
   const [form, setForm] = useState({ nom:'', email:'', mot_de_passe:'', chef_id:'' });
   const [error, setError] = useState('');
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const [selectedOp, setSelectedOp]           = useState(null);
+  const [selectedChef, setSelectedChef]       = useState('');
+  const [assignError, setAssignError]         = useState('');
 
   useEffect(() => { fetchData(); }, []);
 
@@ -32,11 +36,11 @@ const slug = React.useMemo(() =>
     });
   };
 
-  const handleNomChange = (nom) => {
+    const handleNomChange = (nom) => {
     setForm(f => ({ ...f, nom, email: generateEmail(nom, slug) }));
-};
+  };
 
-  const handleSubmit = async () => {
+    const handleSubmit = async () => {
     setError('');
     
       const emailDomain = form.email.split('@')[1] ?? '';
@@ -74,6 +78,21 @@ const slug = React.useMemo(() =>
       }
     });
   };
+  const handleAssigner = async () => {
+  setAssignError('');
+  if (!selectedChef) { setAssignError('Veuillez choisir un chef'); return; }
+  try {
+    await api.put(`/utilisateurs/${selectedOp.id}`, {
+      chef_id: parseInt(selectedChef),
+    });
+    setShowAssignModal(false);
+    setSelectedOp(null);
+    setSelectedChef('');
+    fetchData();
+  } catch(e) {
+    setAssignError(e.response?.data?.message || 'Erreur');
+  }
+};
 
   const statutStyle = {
     'ACTIF':   { background:'rgba(46,213,115,0.15)', color:'#2ed573' },
@@ -139,13 +158,20 @@ const slug = React.useMemo(() =>
                 <td style={S.td}>
                   {u.chef_id ? (
                     <div style={S.chefBadge}>
-                      <div style={S.chefDot} />
-                      {getNomChef(u)}
-                    </div>
-                  ) : (
-                    <span style={{ color:'#4a5260', fontSize:12 }}>Non assigné</span>
-                  )}
-                </td>
+                      <div style={S.chefDot}/>
+                        {getNomChef(u)}
+                      </div>
+                ) : (
+                  <button style={S.btnAssign} onClick={() => {
+                      setSelectedOp(u);
+                      setSelectedChef('');
+                      setAssignError('');
+                      setShowAssignModal(true);
+                }}>
+                    + Assigner
+                  </button>
+  )}
+</td>
                 <td style={S.td}>
                   <span style={{ ...S.pill, ...statutStyle[u.statut] }}>{u.statut}</span>
                 </td>
@@ -215,7 +241,35 @@ const slug = React.useMemo(() =>
           </div>
         </div>
       )}
+      {showAssignModal && (
+    <div style={S.overlay}>
+        <div style={{...S.modal, width:400}}>
+            <div style={S.modalHead}>
+                <span style={S.modalTitle}>Assigner un chef — {selectedOp?.nom}</span>
+                <button style={S.modalClose} onClick={() => setShowAssignModal(false)}>✕</button>
+            </div>
+            {assignError && <div style={S.error}>{assignError}</div>}
+            <Field label="CHEF DE MAINTENANCE">
+                <select
+                    style={{...S.input, color: selectedChef ? '#e8eaf0' : '#4a5260'}}
+                    value={selectedChef}
+                    onChange={e => setSelectedChef(e.target.value)}
+                >
+                    <option value="">— Choisir un chef —</option>
+                    {chefs.map(c => (
+                        <option key={c.id} value={c.id}>{c.nom}</option>
+                    ))}
+                </select>
+            </Field>
+            <div style={S.modalFooter}>
+                <button style={S.btnSecondary} onClick={() => setShowAssignModal(false)}>Annuler</button>
+                <button style={S.btnPrimary} onClick={handleAssigner}>Assigner</button>
+            </div>
+        </div>
     </div>
+)}
+    </div>
+    
   );
 }
 
@@ -255,4 +309,5 @@ const S = {
   input:        { width:'100%', padding:'10px 14px', background:'#1c2129', border:'1px solid rgba(255,255,255,0.12)', borderRadius:7, color:'#e8eaf0', fontSize:13, outline:'none', boxSizing:'border-box' },
   error:        { background:'rgba(255,71,87,0.1)', border:'1px solid rgba(255,71,87,0.3)', color:'#ff4757', padding:'10px 14px', borderRadius:7, fontSize:13, marginBottom:16 },
   infoBox:      { fontSize:12, color:'#00d4aa', background:'rgba(0,212,170,0.06)', border:'1px solid rgba(0,212,170,0.15)', borderRadius:7, padding:'10px 14px', marginBottom:4 },
+  btnAssign:    {padding:'4px 10px', background:'rgba(0,153,255,0.08)', border:'1px solid rgba(0,153,255,0.20)', borderRadius:6, color:'#0099ff', fontSize:11, cursor:'pointer' },
 };

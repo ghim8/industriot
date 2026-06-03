@@ -19,8 +19,7 @@ class MachineController extends BaseController
 {
     $entrepriseId = $request->attributes->get('_entreprise_id') 
                 ?? $request->user()?->entreprise_id;
-    $userId       = $request->query('user_id');
-    $user         = $userId ? \App\Models\Utilisateur::find($userId) : $request->user();
+$user = $request->user();
 
     $query = Machine::query();
 
@@ -183,4 +182,27 @@ public function store(Request $request)
                                    ->get();
         return response()->json($affectations);
     }
+    public function getConfig($topic)
+{
+    $machine = \App\Models\Machine::where('topic_mqtt', $topic)->first();
+    
+    if (!$machine) {
+        return response()->json(['error' => 'Machine non trouvée'], 404);
+    }
+
+    $capteurs = \App\Models\Capteur::where('machine_id', $machine->id)
+        ->select('id', 'type', 'seuil_min', 'seuil_max')
+        ->get();
+
+    $actionneurs = \App\Models\Actionneur::where('machine_id', $machine->id)
+        ->select('id', 'nom', 'type')
+        ->get();
+
+    return response()->json([
+        'machine_id'  => $machine->id,
+        'nom'         => $machine->nom,
+        'capteurs'    => $capteurs,
+        'actionneurs' => $actionneurs,
+    ]);
+}
 }

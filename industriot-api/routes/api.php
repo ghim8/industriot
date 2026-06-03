@@ -16,6 +16,7 @@ use App\Http\Controllers\Api\ActionneurController;
 Route::post('/login',       [AuthController::class, 'login']);
 Route::post('/changer-mdp', [AuthController::class, 'changerMdp']);
 Route::post('/logout',      [AuthController::class, 'logout']);
+Route::get('/ping', fn() => response()->json(['status' => 'ok', 'time' => now()]));
 
 // ── Super Admin (auth uniquement, pas de tenant) ──────────────
 Route::middleware('auth:sanctum')->prefix('super-admin')->group(function () {
@@ -39,6 +40,7 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::post('/machines/{id}/affecter',           [MachineController::class, 'affecter']);
     Route::post('/machines/{id}/retirer-affectation',[MachineController::class, 'retirerAffectation']);
     Route::get('/machines/{id}/affectations',        [MachineController::class, 'affectations']);
+    Route::get('/machines/{topic}/config', [MachineController::class, 'getConfig']);
     
     // Actionneurs
     Route::get('/actionneurs',                           [ActionneurController::class, 'index']);
@@ -69,7 +71,7 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::get('/relais/journal', [RelaiController::class, 'journal']);
     Route::get('/relais',      [RelaiController::class, 'index']);
     Route::put('/relais/{id}', [RelaiController::class, 'update']);
-
+    Route::post('/journal-relais/supprimer-selection', [RelaiController::class, 'supprimerJournal']);
     // Utilisateurs
     Route::get('/utilisateurs',         [UtilisateurController::class, 'index']);
     Route::post('/utilisateurs',        [UtilisateurController::class, 'store']);

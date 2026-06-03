@@ -8,27 +8,33 @@ use Illuminate\Support\Facades\Hash;
 
 class AuthController extends BaseController
 {
+    // Fonction helper en haut du controller
+private function getClientIp(Request $request): string
+{
+    return $request->header('X-Real-IP')
+        ?? $request->header('X-Forwarded-For')
+        ?? $request->ip();
+}
     // POST /api/login
    public function login(Request $request)
 {
-    $request->validate([
-        'email'       => 'required|email',
-        'mot_de_passe'=> 'required|string',
-    ]);
-
+    $ip = $request->input('client_ip')
+            ?? $request->header('X-Forwarded-For')
+            ?? $request->ip();
     $user = Utilisateur::with('entreprise')
                        ->where('email', $request->email)
                        ->first();
 
     // Vérifications
     if (!$user || !\Hash::check($request->mot_de_passe, $user->mot_de_passe)) {
-        \App\Models\Connexion::create([
-            'email_tente' => $request->email,
-            'ip'          => $request->ip(),
-            'statut'      => 'ÉCHEC',
-        ]);
-        return response()->json(['message' => 'Email ou mot de passe incorrect'], 401);
-    }
+    \App\Models\Connexion::create([
+        'email_tente'   => $request->email,
+        'ip'            => $this->getClientIp($request), // ← fix
+        'statut'        => 'ÉCHEC',
+        'entreprise_id' => $user?->entreprise_id ?? null,
+    ]);
+    return response()->json(['message' => 'Email ou mot de passe incorrect'], 401);
+}
 
     if ($user->statut !== 'ACTIF') {
         return response()->json(['message' => 'Compte inactif'], 403);
@@ -47,7 +53,7 @@ $token = $user->createToken('auth_token')->plainTextToken;
     \App\Models\Connexion::create([
         'utilisateur_id' => $user->id,
         'email_tente'    => $user->email,
-        'ip'             => $request->ip(),
+        'ip'             => $this->getClientIp($request), // ← fix
         'statut'         => 'SUCCÈS',
         'entreprise_id'  => $user->entreprise_id,
     ]);
@@ -90,16 +96,11 @@ $token = $user->createToken('auth_token')->plainTextToken;
     }
     public function changerMdp(Request $request)
 {
-    $request->validate([
-        'utilisateur_id' => 'required|integer',
-        'nouveau_mdp'    => 'required|string|min:6',
-    ]);
+        $user = Utilisateur::findOrFail($request->utilisateur_id);
+        $user->mot_de_passe = Hash::make($request->nouveau_mdp);
+        $user->mdp_change   = 1;
+        $user->save();
 
-    $user = \App\Models\Utilisateur::findOrFail($request->utilisateur_id);
-    $user->mot_de_passe = \Hash::make($request->nouveau_mdp);
-    $user->mdp_change   = 1;
-    $user->save();
-
-    return response()->json(['message' => 'Mot de passe changé avec succès']);
-}
+        return response()->json(['message' => 'Mot de passe changé avec succès']);
+    }
 }

@@ -12,10 +12,10 @@ class RelaiController extends BaseController
    public function index(Request $request)
 {
     $entrepriseId = $this->getEntrepriseId($request);
-    $userId       = $request->query('user_id');
-    $user         = $userId ? \App\Models\Utilisateur::find($userId) : $request->user();
+    $user = $request->user();
 
-    $query = Relai::with(['machine', 'actionneur']);
+
+    $query = Relai::with(['machine', 'actionneur.machine']);
 
     // Filtre tenant
     if ($entrepriseId) {
@@ -39,14 +39,13 @@ class RelaiController extends BaseController
 
     return response()->json($query->get());
 }
-    public function update(Request $request, $id)
+ public function update(Request $request, $id)
 {
-    $relai = Relai::findOrFail($id);
+    $relai = Relai::findOrFail($id);  // ← Relai pas Capteur
     $ancienEtat = $relai->etat;
     $relai->etat = $request->etat;
     $relai->save();
 
-    // Journal
     JournalRelai::create([
         'relais_id'      => $relai->id,
         'utilisateur_id' => $request->utilisateur_id ?? null,
@@ -55,14 +54,31 @@ class RelaiController extends BaseController
         'source'         => 'MANUEL',
     ]);
 
-    // Publier commande MQTT
     try {
-        $mqtt = new \PhpMqtt\Client\MqttClient('localhost', 1883, 'laravel-relais-' . $id);
-        $settings = (new \PhpMqtt\Client\ConnectionSettings)->setConnectTimeout(3);
-        $mqtt->connect($settings);
+        $mqttHost = config('mqtt.host');
+        $mqttPort = (int) config('mqtt.port');
+        $mqttUser = config('mqtt.username');
+        $mqttPass = config('mqtt.password');
 
-        $machine = $relai->machine;
-        $topic   = $machine ? $machine->topic_mqtt . '/commandes' : 'usine/commandes/global';
+        if (!$mqttHost) throw new \Exception('MQTT_HOST manquant');
+
+        $connectionSettings = (new \PhpMqtt\Client\ConnectionSettings)
+            ->setUsername($mqttUser)
+            ->setPassword($mqttPass)
+            ->setUseTls(true)
+            ->setTlsSelfSignedAllowed(true)
+            ->setConnectTimeout(3);
+
+        $mqtt = new \PhpMqtt\Client\MqttClient(
+            $mqttHost, $mqttPort,
+            'laravel-relais-' . $id . '-' . time()
+        );
+        $mqtt->connect($connectionSettings);
+
+        $machine = $relai->machine ?? $relai->actionneur?->machine;
+        $topic   = $machine
+            ? $machine->topic_mqtt . '/commandes'
+            : 'usine/machine' . $relai->machine_id . '/commandes';
 
         $payload = json_encode([
             'action'     => $request->etat ? 'ON' : 'OFF',
@@ -76,12 +92,12 @@ class RelaiController extends BaseController
         $mqtt->disconnect();
 
     } catch (\Exception $e) {
-        // Log l'erreur mais ne bloque pas la réponse
-        \Log::warning('MQTT publish failed: ' . $e->getMessage());
+        \Log::warning('MQTT relais failed: ' . $e->getMessage());
     }
 
     return response()->json($relai);
 }
+
 public function journal(Request $request)
 {
     $userId = $request->query('user_id');
@@ -118,5 +134,11 @@ public function journal(Request $request)
             'utilisateur_initiales' => $j->utilisateur?->initiales ?? 'SY',
         ];
     }));
+}
+public function supprimerJournal(Request $request)
+{
+    $request->validate(['ids' => 'required|array']);
+    \App\Models\JournalRelai::whereIn('id', $request->ids)->delete();
+    return response()->json(['message' => 'Journal vidé']);
 }
 }

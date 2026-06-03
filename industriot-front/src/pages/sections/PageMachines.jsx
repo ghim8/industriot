@@ -61,7 +61,7 @@ export default function PageMachines({ mesures = {} }) {
   useEffect(() => { fetchMachines(); }, []);
 
   const fetchMachines = () => {
-    api.get(`/machines?user_id=${user?.id}`).then(r => { setMachines(r.data); setLoading(false); });
+    api.get('/machines').then(r => { setMachines(r.data); setLoading(false); });
   };
 
   const openCreate = () => {

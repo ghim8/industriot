@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import mqtt from 'mqtt';
 
-const BROKER_URL = 'ws://localhost:9001';
+const BROKER_URL = 'wss://cbb2c9e8a6774389b0b16d7287862246.s1.eu.hivemq.cloud:8884/mqtt';
 
 export function useMqtt() {
   const [connected, setConnected]   = useState(false);
@@ -10,9 +10,12 @@ export function useMqtt() {
 
   useEffect(() => {
     const client = mqtt.connect(BROKER_URL, {
-      clientId: 'react-dashboard-' + Math.random().toString(16).slice(2),
-      reconnectPeriod: 3000,
-    });
+    clientId:       'react-dashboard-' + Math.random().toString(16).slice(2),
+    reconnectPeriod: 3000,
+    username:       'rimaa',
+    password:       'Rim01082004',
+    protocol:       'wss',
+  });
 
     client.on('connect', () => {
       console.log('✅ MQTT connecté');

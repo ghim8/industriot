@@ -4,24 +4,25 @@ import api from '../../api/axios';
 
 export default function PageRelais() {
   const { user } = useAuth();
-  const [relais, setRelais]         = useState([]);
-  const [journal, setJournal]       = useState([]);
-  const [loading, setLoading]       = useState(true);
-  const [filtreEtat, setFiltreEtat] = useState('TOUS');
+  const [relais, setRelais]             = useState([]);
+  const [journal, setJournal]           = useState([]);
+  const [confirmVider, setConfirmVider] = useState(false);
+  const [loading, setLoading]           = useState(true);
+  const [filtreEtat, setFiltreEtat]     = useState('TOUS');
   const [filtreMachine, setFiltreMachine] = useState('TOUTES');
-  const [filtreUser, setFiltreUser] = useState('TOUS');
-  const [machines, setMachines]     = useState([]);
-  const [users, setUsers]           = useState([]);
-  const [showFiltres, setShowFiltres] = useState(false);
-  const [filtreDate, setFiltreDate]   = useState('');
+  const [filtreUser, setFiltreUser]     = useState('TOUS');
+  const [machines, setMachines]         = useState([]);
+  const [users, setUsers]               = useState([]);
+  const [showFiltres, setShowFiltres]   = useState(false);
+  const [filtreDate, setFiltreDate]     = useState('');
+
   useEffect(() => {
     fetchRelais();
     fetchJournal();
   }, []);
 
   const fetchRelais = () => {
-    const params = user?.role === 'operateur' ? `?user_id=${user.id}` : '';
-    api.get(`/relais${params}`).then(r => {
+    api.get('/relais').then(r => {
       setRelais(r.data);
       setLoading(false);
     });
@@ -30,7 +31,6 @@ export default function PageRelais() {
   const fetchJournal = useCallback(() => {
     api.get('/relais/journal').then(r => {
       setJournal(r.data);
-      // Extraire machines et users uniques pour les filtres
       const ms = [...new Map(r.data.filter(j => j.machine_nom)
         .map(j => [j.machine_nom, j.machine_nom])).values()];
       const us = [...new Map(r.data.filter(j => j.utilisateur_nom)
@@ -50,7 +50,6 @@ export default function PageRelais() {
         etat: nouvelEtat,
         utilisateur_id: user?.id,
       });
-      // Recharger le journal depuis la BDD
       fetchJournal();
     } catch(e) {
       setRelais(prev => prev.map(r =>
@@ -60,22 +59,31 @@ export default function PageRelais() {
     }
   };
 
-  // Filtrer le journal
+  const viderJournal = async () => {
+    const ids = journal.map(j => j.id);
+    if (!ids.length) return;
+    try {
+      await api.post('/journal-relais/supprimer-selection', { ids });
+      setJournal([]);
+      setConfirmVider(false);
+    } catch(e) {
+      alert('Erreur lors de la suppression');
+    }
+  };
+
   const journalFiltre = journal.filter(j => {
-  if (filtreEtat !== 'TOUS') {
-    if ((j.nouvel_etat ? 'ON' : 'OFF') !== filtreEtat) return false;
-  }
-  if (filtreMachine !== 'TOUTES' && j.machine_nom !== filtreMachine) return false;
-  if (filtreUser !== 'TOUS' && j.utilisateur_nom !== filtreUser) return false;
-  if (filtreDate) {
-    const dateAction = new Date(j.horodatage).toISOString().slice(0,10);
-    if (dateAction !== filtreDate) return false;
-  }
-  return true;
-});
+    if (filtreEtat !== 'TOUS' && (j.nouvel_etat ? 'ON' : 'OFF') !== filtreEtat) return false;
+    if (filtreMachine !== 'TOUTES' && j.machine_nom !== filtreMachine) return false;
+    if (filtreUser !== 'TOUS' && j.utilisateur_nom !== filtreUser) return false;
+    if (filtreDate) {
+      const dateAction = new Date(j.horodatage).toISOString().slice(0,10);
+      if (dateAction !== filtreDate) return false;
+    }
+    return true;
+  });
 
   const parMachine = relais.reduce((acc, r) => {
-    const machineName = r.machine?.nom || r.actionneur?.machine?.nom || 'Sans machine';
+    const machineName = r.machine?.nom || 'Sans machine';
     if (!acc[machineName]) acc[machineName] = [];
     acc[machineName].push(r);
     return acc;
@@ -85,17 +93,31 @@ export default function PageRelais() {
   const totalOff = relais.filter(r => r.etat === 0).length;
 
   if (loading) return <div style={S.loading}>Chargement...</div>;
-  function Field({ label, children }) {
-  return (
-    <div style={{ marginBottom:10 }}>
-      <label style={{ display:'block', fontSize:10, color:'#4a5260', letterSpacing:1, marginBottom:5 }}>{label}</label>
-      {children}
-    </div>
-  );
-}
 
   return (
     <div>
+      {/* ── Modal confirmation vider ── */}
+      {confirmVider && (
+        <div style={S.overlay}>
+          <div style={S.confirmModal}>
+            <div style={S.confirmIcon}>🗑</div>
+            <div style={S.confirmTitle}>Vider l'historique ?</div>
+            <div style={S.confirmSub}>
+              Cette action supprimera définitivement les{' '}
+              <strong style={{color:'#e8eaf0'}}>{journal.length}</strong> entrée(s) du journal.
+            </div>
+            <div style={S.confirmBtns}>
+              <button style={S.btnAnnuler} onClick={() => setConfirmVider(false)}>
+                Annuler
+              </button>
+              <button style={S.btnConfirmer} onClick={viderJournal}>
+                Confirmer la suppression
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Métriques */}
       <div style={S.metricsRow}>
         <div style={S.mcard}>
@@ -135,10 +157,6 @@ export default function PageRelais() {
                     <div style={S.relaiNom}>{relai.nom}</div>
                     {relai.actionneur?.nom && (
                       <div style={S.relaiActionneur}>
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#7a8394" strokeWidth="2">
-                          <circle cx="12" cy="12" r="3"/>
-                          <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
-                        </svg>
                         <span>{relai.actionneur.nom}</span>
                         <span style={S.relaiActTypePill}>{relai.actionneur.type}</span>
                       </div>
@@ -150,7 +168,7 @@ export default function PageRelais() {
                       {relai.etat === 1 ? 'ON' : 'OFF'}
                     </span>
                     <div
-                      style={{...S.toggle, background: relai.etat === 1 ? '#2ed573' : 'rgba(255,255,255,0.1)', cursor:'pointer'}}
+                      style={{...S.toggle, background: relai.etat === 1 ? '#2ed573' : 'rgba(255,255,255,0.1)'}}
                       onClick={() => toggle(relai)}
                     >
                       <div style={{...S.toggleThumb, transform: relai.etat === 1 ? 'translateX(20px)' : 'translateX(2px)'}}/>
@@ -163,116 +181,108 @@ export default function PageRelais() {
         </div>
 
         {/* Journal */}
-<div style={S.card}>
-  <div style={S.cardHead}>
-    <span style={S.cardTitle}>JOURNAL DES ACTIONS</span>
-    <div style={{display:'flex', gap:6}}>
-      <button style={S.btnRefresh} onClick={fetchJournal}>↺</button>
-      <button style={{...S.btnRefresh, color:'#f5a623', borderColor:'rgba(245,166,35,0.18)', background:'rgba(245,166,35,0.08)'}}
-        onClick={() => setShowFiltres(!showFiltres)}>
-        ⚙ Filtres {(filtreEtat !== 'TOUS' || filtreMachine !== 'TOUTES' || filtreUser !== 'TOUS' || filtreDate) ? '●' : ''}
-      </button>
-    </div>
-  </div>
-
-  {/* Popup filtres */}
-  {showFiltres && (
-    <div style={S.filtrePopup}>
-      <div style={S.filtrePopupHead}>
-        <span style={{fontSize:12, fontWeight:600, color:'#e8eaf0'}}>Filtres</span>
-        <button style={S.filtreClose} onClick={() => setShowFiltres(false)}>✕</button>
-      </div>
-
-      <Field label="ÉTAT">
-        <select style={S.select} value={filtreEtat} onChange={e => setFiltreEtat(e.target.value)}>
-          <option value="TOUS">Tous</option>
-          <option value="ON">ON</option>
-          <option value="OFF">OFF</option>
-        </select>
-      </Field>
-
-      <Field label="MACHINE">
-        <select style={S.select} value={filtreMachine} onChange={e => setFiltreMachine(e.target.value)}>
-          <option value="TOUTES">Toutes</option>
-          {machines.map(m => <option key={m} value={m}>{m}</option>)}
-        </select>
-      </Field>
-
-      {user?.role !== 'operateur' && (
-        <Field label="UTILISATEUR">
-          <select style={S.select} value={filtreUser} onChange={e => setFiltreUser(e.target.value)}>
-            <option value="TOUS">Tous</option>
-            {users.map(u => <option key={u} value={u}>{u}</option>)}
-          </select>
-        </Field>
-      )}
-
-      <Field label="DATE">
-        <input style={S.select} type="date" value={filtreDate}
-          onChange={e => setFiltreDate(e.target.value)}/>
-      </Field>
-
-      <button style={{...S.btnRefresh, width:'100%', justifyContent:'center', marginTop:8}}
-        onClick={() => { setFiltreEtat('TOUS'); setFiltreMachine('TOUTES'); setFiltreUser('TOUS'); setFiltreDate(''); }}>
-        Réinitialiser
-      </button>
-    </div>
-  )}
-
-  {/* Compteur */}
-  <div style={S.compteur}>
-    {journalFiltre.length} action(s) · {journal.length} total
-  </div>
-
-  {/* Liste avec scroll — max 6 visible */}
-  <div style={S.logScroll}>
-    {journalFiltre.length === 0 ? (
-      <div style={S.empty}>Aucune action trouvée</div>
-    ) : (
-      journalFiltre.map((entry, i) => (
-        <div key={entry.id || i} style={S.logRow}>
-          <div style={S.logAvatar}>{entry.utilisateur_initiales || 'SY'}</div>
-          <div style={{flex:1, minWidth:0}}>
-            <div style={S.logUser}>
-              <span style={S.logUserNom}>{entry.utilisateur_nom}</span>
-              <span style={S.logTime}>{new Date(entry.horodatage).toLocaleString('fr-FR')}</span>
-            </div>
-            <div style={S.logMachine}>
-              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#4a5260" strokeWidth="2">
-                <rect x="2" y="3" width="20" height="14" rx="2"/>
-                <line x1="8" y1="21" x2="16" y2="21"/>
-                <line x1="12" y1="17" x2="12" y2="21"/>
-              </svg>
-              {entry.machine_nom}
-              {entry.actionneur_nom && <span style={S.logActTag}>⚙ {entry.actionneur_nom}</span>}
-            </div>
-            <div style={S.logRelais}>
-              <span style={S.logNom}>{entry.relais_nom}</span>
-              <span style={{...S.logEtatPetit, color:'#4a5260'}}>{entry.ancien_etat ? 'ON' : 'OFF'}</span>
-              <span style={{color:'#4a5260', fontSize:10}}>→</span>
-              <span style={{...S.logEtatPetit, color: entry.nouvel_etat ? '#2ed573' : '#ff4757'}}>
-                {entry.nouvel_etat ? 'ON' : 'OFF'}
-              </span>
+        <div style={S.card}>
+          <div style={S.cardHead}>
+            <span style={S.cardTitle}>JOURNAL DES ACTIONS</span>
+            <div style={{display:'flex', gap:6}}>
+              <button style={S.btnRefresh} onClick={fetchJournal}>↺</button>
+              <button style={{...S.btnRefresh, color:'#ff4757', borderColor:'rgba(255,71,87,0.18)', background:'rgba(255,71,87,0.08)'}}
+                onClick={() => setConfirmVider(true)}>
+                🗑 Vider
+              </button>
+              <button style={{...S.btnRefresh, color:'#f5a623', borderColor:'rgba(245,166,35,0.18)', background:'rgba(245,166,35,0.08)'}}
+                onClick={() => setShowFiltres(!showFiltres)}>
+                ⚙ Filtres {(filtreEtat !== 'TOUS' || filtreMachine !== 'TOUTES' || filtreUser !== 'TOUS' || filtreDate) ? '●' : ''}
+              </button>
             </div>
           </div>
-          <span style={{
-            ...S.logEtat,
-            color:       entry.nouvel_etat ? '#2ed573' : '#ff4757',
-            background:  entry.nouvel_etat ? 'rgba(46,213,115,0.10)' : 'rgba(255,71,87,0.10)',
-            borderColor: entry.nouvel_etat ? 'rgba(46,213,115,0.25)' : 'rgba(255,71,87,0.25)',
-          }}>
-            {entry.nouvel_etat ? 'ON' : 'OFF'}
-          </span>
+
+          {showFiltres && (
+            <div style={S.filtrePopup}>
+              <div style={S.filtrePopupHead}>
+                <span style={{fontSize:12, fontWeight:600, color:'#e8eaf0'}}>Filtres</span>
+                <button style={S.filtreClose} onClick={() => setShowFiltres(false)}>✕</button>
+              </div>
+              <Field label="ÉTAT">
+                <select style={S.select} value={filtreEtat} onChange={e => setFiltreEtat(e.target.value)}>
+                  <option value="TOUS">Tous</option>
+                  <option value="ON">ON</option>
+                  <option value="OFF">OFF</option>
+                </select>
+              </Field>
+              <Field label="MACHINE">
+                <select style={S.select} value={filtreMachine} onChange={e => setFiltreMachine(e.target.value)}>
+                  <option value="TOUTES">Toutes</option>
+                  {machines.map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </Field>
+              {user?.role !== 'operateur' && (
+                <Field label="UTILISATEUR">
+                  <select style={S.select} value={filtreUser} onChange={e => setFiltreUser(e.target.value)}>
+                    <option value="TOUS">Tous</option>
+                    {users.map(u => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                </Field>
+              )}
+              <Field label="DATE">
+                <input style={S.select} type="date" value={filtreDate}
+                  onChange={e => setFiltreDate(e.target.value)}/>
+              </Field>
+              <button style={{...S.btnRefresh, width:'100%', justifyContent:'center', marginTop:8}}
+                onClick={() => { setFiltreEtat('TOUS'); setFiltreMachine('TOUTES'); setFiltreUser('TOUS'); setFiltreDate(''); }}>
+                Réinitialiser
+              </button>
+            </div>
+          )}
+
+          <div style={S.compteur}>
+            {journalFiltre.length} action(s) · {journal.length} total
+          </div>
+
+          <div style={S.logScroll}>
+            {journalFiltre.length === 0 ? (
+              <div style={S.empty}>Aucune action trouvée</div>
+            ) : (
+              journalFiltre.map((entry, i) => (
+                <div key={entry.id || i} style={S.logRow}>
+                  <div style={S.logAvatar}>{entry.utilisateur_initiales || 'SY'}</div>
+                  <div style={{flex:1, minWidth:0}}>
+                    <div style={S.logUser}>
+                      <span style={S.logUserNom}>{entry.utilisateur_nom}</span>
+                      <span style={S.logTime}>{new Date(entry.horodatage).toLocaleString('fr-FR')}</span>
+                    </div>
+                    <div style={S.logMachine}>
+                      {entry.machine_nom}
+                      {entry.actionneur_nom && <span style={S.logActTag}>⚙ {entry.actionneur_nom}</span>}
+                    </div>
+                    <div style={S.logRelais}>
+                      <span style={S.logNom}>{entry.relais_nom}</span>
+                      <span style={{...S.logEtatPetit, color:'#4a5260'}}>{entry.ancien_etat ? 'ON' : 'OFF'}</span>
+                      <span style={{color:'#4a5260', fontSize:10}}>→</span>
+                      <span style={{...S.logEtatPetit, color: entry.nouvel_etat ? '#2ed573' : '#ff4757'}}>
+                        {entry.nouvel_etat ? 'ON' : 'OFF'}
+                      </span>
+                    </div>
+                  </div>
+                  <span style={{
+                    ...S.logEtat,
+                    color:       entry.nouvel_etat ? '#2ed573' : '#ff4757',
+                    background:  entry.nouvel_etat ? 'rgba(46,213,115,0.10)' : 'rgba(255,71,87,0.10)',
+                    borderColor: entry.nouvel_etat ? 'rgba(46,213,115,0.25)' : 'rgba(255,71,87,0.25)',
+                  }}>
+                    {entry.nouvel_etat ? 'ON' : 'OFF'}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
         </div>
-      ))
-    )}
-  </div>
-</div>
- </div>
- </div>
- 
+      </div>
+    </div>
   );
-  function Field({ label, children }) {
+}
+
+function Field({ label, children }) {
   return (
     <div style={{ marginBottom:10 }}>
       <label style={{ display:'block', fontSize:10, color:'#4a5260', letterSpacing:1, marginBottom:5 }}>{label}</label>
@@ -280,9 +290,6 @@ export default function PageRelais() {
     </div>
   );
 }
-}
-
-
 
 const S = {
   loading:          { color:'#7a8394', textAlign:'center', marginTop:40 },
@@ -303,11 +310,8 @@ const S = {
   relaiCanal:       { fontSize:11, color:'#4a5260' },
   toggleGroup:      { display:'flex', alignItems:'center', gap:10, flexShrink:0 },
   etatLabel:        { fontSize:11, fontWeight:600, width:28 },
-  toggle:           { width:44, height:24, borderRadius:12, position:'relative', transition:'background 0.2s', flexShrink:0 },
+  toggle:           { width:44, height:24, borderRadius:12, position:'relative', transition:'background 0.2s', flexShrink:0, cursor:'pointer' },
   toggleThumb:      { position:'absolute', top:2, width:20, height:20, borderRadius:'50%', background:'white', transition:'transform 0.2s', boxShadow:'0 1px 3px rgba(0,0,0,0.3)' },
-
-  // Journal
-  filtresRow:       { display:'flex', gap:6, marginBottom:10, flexWrap:'wrap' },
   select:           { padding:'5px 8px', background:'#1c2129', border:'1px solid rgba(255,255,255,0.10)', borderRadius:6, color:'#e8eaf0', fontSize:11, cursor:'pointer', outline:'none', flex:1 },
   compteur:         { fontSize:11, color:'#4a5260', marginBottom:10 },
   logRow:           { display:'flex', alignItems:'flex-start', gap:8, padding:'10px 0', borderBottom:'1px solid rgba(255,255,255,0.04)' },
@@ -323,10 +327,16 @@ const S = {
   logEtat:          { fontSize:10, fontWeight:700, flexShrink:0, padding:'2px 8px', borderRadius:4, border:'1px solid', letterSpacing:0.5 },
   btnRefresh:       { fontSize:10, color:'#00d4aa', background:'rgba(0,212,170,0.08)', border:'1px solid rgba(0,212,170,0.18)', borderRadius:5, padding:'4px 10px', cursor:'pointer' },
   empty:            { color:'#4a5260', fontSize:12, textAlign:'center', padding:'20px 0' },
-  logScroll:        { maxHeight: 420, overflowY:'auto', paddingRight:4,
-                   scrollbarWidth:'thin', scrollbarColor:'rgba(255,255,255,0.1) transparent' },
-  filtrePopup:      { position:'relative', background:'#1c2129', border:'1px solid rgba(255,255,255,0.12)',
-                   borderRadius:10, padding:'14px 16px', marginBottom:12, zIndex:10 },
+  logScroll:        { maxHeight:420, overflowY:'auto', paddingRight:4 },
+  filtrePopup:      { position:'relative', background:'#1c2129', border:'1px solid rgba(255,255,255,0.12)', borderRadius:10, padding:'14px 16px', marginBottom:12, zIndex:10 },
   filtrePopupHead:  { display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 },
   filtreClose:      { background:'none', border:'none', color:'#7a8394', fontSize:14, cursor:'pointer' },
+  overlay:          { position:'fixed', inset:0, background:'rgba(0,0,0,0.75)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:9999 },
+  confirmModal:     { background:'#161b22', border:'1px solid rgba(255,255,255,0.12)', borderRadius:12, padding:'32px', width:380, maxWidth:'90vw', textAlign:'center' },
+  confirmIcon:      { fontSize:36, marginBottom:14 },
+  confirmTitle:     { fontSize:16, fontWeight:600, color:'#e8eaf0', marginBottom:8 },
+  confirmSub:       { fontSize:13, color:'#7a8394', lineHeight:1.6, marginBottom:24 },
+  confirmBtns:      { display:'flex', gap:10, justifyContent:'center' },
+  btnAnnuler:       { padding:'9px 20px', background:'transparent', border:'1px solid rgba(255,255,255,0.12)', borderRadius:7, color:'#7a8394', fontSize:13, cursor:'pointer' },
+  btnConfirmer:     { padding:'9px 20px', background:'rgba(255,71,87,0.15)', border:'1px solid rgba(255,71,87,0.30)', borderRadius:7, color:'#ff4757', fontSize:13, fontWeight:600, cursor:'pointer' },
 };

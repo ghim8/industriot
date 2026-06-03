@@ -63,26 +63,28 @@ class AffectationController extends BaseController
     }
 
     public function mesOperateurs(Request $request)
-    {
-        $chefId = $request->query('chef_id');
-        if (!$chefId) return response()->json([]);
+{
+    $user   = $request->user();
+    $chefId = $request->query('chef_id') ?? $user->id;
+    
+    if (!$chefId) return response()->json([]);
 
-        $operateurs = Utilisateur::where('chef_id', $chefId)
-                                 ->where('role', 'operateur')
-                                 ->where('statut', 'ACTIF')
-                                 ->get();
+    $operateurs = \App\Models\Utilisateur::where('chef_id', $chefId)
+                                         ->where('role', 'operateur')
+                                         ->where('statut', 'ACTIF')
+                                         ->get();
 
-        if ($operateurs->isEmpty()) {
-            $machineIds   = Affectation::where('utilisateur_id', $chefId)->pluck('machine_id');
-            $operateurIds = Affectation::whereIn('machine_id', $machineIds)
-                                       ->pluck('utilisateur_id')->unique();
-            $operateurs   = Utilisateur::whereIn('id', $operateurIds)
-                                       ->where('role', 'operateur')
-                                       ->where('statut', 'ACTIF')->get();
-        }
-
-        return response()->json($operateurs);
+    if ($operateurs->isEmpty()) {
+        $machineIds   = \App\Models\Affectation::where('utilisateur_id', $chefId)->pluck('machine_id');
+        $operateurIds = \App\Models\Affectation::whereIn('machine_id', $machineIds)
+                                               ->pluck('utilisateur_id')->unique();
+        $operateurs   = \App\Models\Utilisateur::whereIn('id', $operateurIds)
+                                               ->where('role', 'operateur')
+                                               ->where('statut', 'ACTIF')->get();
     }
+
+    return response()->json($operateurs);
+}
 
     public function addChef(Request $request)
 {

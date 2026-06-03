@@ -73,7 +73,7 @@ const slug = React.useMemo(() =>
     setConfirm({
       message: `Voulez-vous vraiment supprimer l'utilisateur "${user.nom}" ?`,
       onConfirm: async () => {
-        await api.delete(`/utilisateurs/${user.id}`);
+        await api.delete('/utilisateurs');
         setConfirm(null);
         fetchUsers();
       }

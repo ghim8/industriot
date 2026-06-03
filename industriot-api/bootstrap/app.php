@@ -12,11 +12,20 @@ return Application::configure(basePath: dirname(__DIR__))
         health:   '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->trustProxies(at: '*');
         $middleware->alias([
             'auth.token' => \App\Http\Middleware\AuthToken::class,
-            'tenant' => \App\Http\Middleware\TenantMiddleware::class,
+            'tenant'     => \App\Http\Middleware\TenantMiddleware::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
+        // ✅ Retourner JSON 401 au lieu de rediriger vers /login
+        $exceptions->render(function (
+            \Illuminate\Auth\AuthenticationException $e,
+            \Illuminate\Http\Request $request
+        ) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json(['message' => 'Non authentifié'], 401);
+            }
+        });
     })->create();

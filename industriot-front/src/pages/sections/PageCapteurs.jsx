@@ -34,13 +34,17 @@ export default function PageCapteurs() {
   const [editCapteur, setEditCapteur] = useState(null);
   const [form, setForm] = useState({ machine_id:'', type:'temperature', unite:'°C', seuil_min:'', seuil_max:'' });
   const [error, setError] = useState('');
+  const [showSeuilModal, setShowSeuilModal] = useState(false);
+const [seuilCapteur, setSeuilCapteur]     = useState(null);
+const [seuilForm, setSeuilForm]           = useState({ seuil_min:'', seuil_max:'' });
+const [seuilLoading, setSeuilLoading]     = useState(false);
 
   useEffect(() => { fetchData(); }, []);
 
   const fetchData = (machineId = 'all') => {
     const params = machineId !== 'all' ? `?machine_id=${machineId}` : '';
     Promise.all([
-      api.get(`/capteurs${params}`),
+      api.get('/capteurs'),
       api.get('/machines'),
     ]).then(([c, m]) => {
       setGroupes(c.data);
@@ -48,6 +52,29 @@ export default function PageCapteurs() {
       setLoading(false);
     });
   };
+  const openSeuilRapide = (c) => {
+    setSeuilCapteur(c);
+    setSeuilForm({
+        seuil_min: c.seuil_min ?? '',
+        seuil_max: c.seuil_max ?? '',
+    });
+    setShowSeuilModal(true);
+};
+const handleSeuilSubmit = async () => {
+    setSeuilLoading(true);
+    try {
+        await api.put(`/capteurs/${seuilCapteur.id}`, {
+            seuil_min: seuilForm.seuil_min !== '' ? parseFloat(seuilForm.seuil_min) : null,
+            seuil_max: seuilForm.seuil_max !== '' ? parseFloat(seuilForm.seuil_max) : null,
+        });
+        setShowSeuilModal(false);
+        fetchData(machineSelected);
+    } catch(e) {
+        alert(e.response?.data?.message || 'Erreur');
+    } finally {
+        setSeuilLoading(false);
+    }
+};
 
   const openEdit = (c) => {
     setEditCapteur(c);
@@ -59,11 +86,20 @@ export default function PageCapteurs() {
   const handleSubmit = async () => {
     setError('');
     try {
-      await api.put(`/capteurs/${editCapteur.id}`, form);
-      setShowModal(false);
-      fetchData(machineSelected);
-    } catch(e) { setError(e.response?.data?.message || 'Erreur'); }
-  };
+        await api.put(`/capteurs/${editCapteur.id}`, {
+            seuil_min: form.seuil_min !== '' ? parseFloat(form.seuil_min) : null,
+            seuil_max: form.seuil_max !== '' ? parseFloat(form.seuil_max) : null,
+            unite:     form.unite,
+            actif:     form.actif ?? 1,
+        });
+        setShowModal(false);
+        fetchData(machineSelected);
+        // Feedback visuel
+        alert(`✅ Seuils mis à jour et envoyés à l'ESP32 via MQTT`);
+    } catch(e) {
+        setError(e.response?.data?.message || 'Erreur');
+    }
+};
 
   const handleDelete = async (id) => {
     if (!window.confirm('Supprimer ce capteur ?')) return;
@@ -217,6 +253,15 @@ export default function PageCapteurs() {
                       <td style={S.td}>
                         <div style={{display:'flex', gap:6}}>
                           <button style={S.btnEdit} onClick={() => openEdit(c)}>Modifier</button>
+                            {/* Bouton seuils rapide */}
+            <button style={{
+                ...S.btnEdit,
+                background:'rgba(245,166,35,0.10)',
+                borderColor:'rgba(245,166,35,0.20)',
+                color:'#f5a623',
+            }} onClick={() => openSeuilRapide(c)}>
+                ⚠ Seuils
+            </button>
                           <button style={S.btnDel}  onClick={() => handleDelete(c.id)}>Supprimer</button>
                         </div>
                       </td>
@@ -233,6 +278,74 @@ export default function PageCapteurs() {
 })()}
 
       {/* Modal modifier capteur */}
+      {showSeuilModal && seuilCapteur && (
+    <div style={S.overlay}>
+        <div style={{...S.modal, width:360}}>
+            <div style={S.modalHead}>
+                <span style={S.modalTitle}>
+                    ⚠ Seuils — {seuilCapteur.type}
+                </span>
+                <button style={S.modalClose} onClick={() => setShowSeuilModal(false)}>✕</button>
+            </div>
+
+            {/* Info MQTT */}
+            <div style={{
+                padding:'8px 12px',
+                background:'rgba(245,166,35,0.06)',
+                border:'1px solid rgba(245,166,35,0.20)',
+                borderRadius:7, fontSize:11,
+                color:'#f5a623', marginBottom:16,
+            }}>
+                📡 Les nouveaux seuils seront envoyés à l'ESP32 via MQTT
+            </div>
+
+            <div style={S.grid2}>
+                <div style={{marginBottom:14}}>
+                    <label style={S.label}>SEUIL MIN ({seuilCapteur.unite})</label>
+                    <input style={S.input} type="number" step="0.1"
+                        value={seuilForm.seuil_min}
+                        onChange={e => setSeuilForm({...seuilForm, seuil_min: e.target.value})}
+                        placeholder="0"/>
+                </div>
+                <div style={{marginBottom:14}}>
+                    <label style={S.label}>SEUIL MAX ({seuilCapteur.unite})</label>
+                    <input style={S.input} type="number" step="0.1"
+                        value={seuilForm.seuil_max}
+                        onChange={e => setSeuilForm({...seuilForm, seuil_max: e.target.value})}
+                        placeholder="100"/>
+                </div>
+            </div>
+
+            {/* Aperçu */}
+            <div style={{
+                padding:'8px 12px',
+                background:'rgba(255,255,255,0.03)',
+                borderRadius:6, fontSize:12,
+                color:'#7a8394', marginBottom:16,
+            }}>
+                Valeur actuelle : <strong style={{color:'#e8eaf0'}}>
+                    {seuilCapteur.seuil_min} → {seuilCapteur.seuil_max} {seuilCapteur.unite}
+                </strong><br/>
+                Nouvelle valeur : <strong style={{color:'#f5a623'}}>
+                    {seuilForm.seuil_min || '—'} → {seuilForm.seuil_max || '—'} {seuilCapteur.unite}
+                </strong>
+            </div>
+
+            <div style={S.modalFooter}>
+                <button style={S.btnSecondary} onClick={() => setShowSeuilModal(false)}>
+                    Annuler
+                </button>
+                <button style={{
+                    ...S.btnPrimary,
+                    background: seuilLoading ? '#4a5260' : '#f5a623',
+                    color: '#0a0c0f',
+                }} onClick={handleSeuilSubmit} disabled={seuilLoading}>
+                    {seuilLoading ? 'Envoi...' : '📡 Appliquer et envoyer'}
+                </button>
+            </div>
+        </div>
+    </div>
+)}
       {showModal && (
         <div style={S.overlay}>
           <div style={S.modal}>

@@ -185,10 +185,10 @@ export default function PageChefs() {
 
             <Field label="EMAIL">
   <EmailField
-    value={form.email}
+    value={chefForm.email}
     onChange={(val) => {
       const local = val.split('@')[0];
-      setForm({...form, email: `${local}@${slug}.local`});
+      setChefForm({...chefForm, email: `${local}@${slug}.local`});
     }}
     slug={slug}
     style={S.input}
