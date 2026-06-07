@@ -1,0 +1,44 @@
+name: Build & Push Docker Hub
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build-react:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and Push React
+        uses: docker/build-push-action@v5
+        with:
+          context: ./industriot-front
+          push: true
+          tags: ghiim/industriot-react:latest
+
+  build-laravel:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and Push Laravel
+        uses: docker/build-push-action@v5
+        with:
+          context: ./industriot-api
+          push: true
+          tags: ghiim/industriot-laravel:latest
