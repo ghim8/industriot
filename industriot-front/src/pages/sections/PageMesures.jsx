@@ -145,18 +145,7 @@ export default function PageMesures({ mesures = {}, defaultMachineId = null }) {
               <span style={S.updateTime}>màj {lastUpdate}</span>
             </div>
           )}
-          <button style={{...S.btnToggle,
-            background:  autoRefresh ? 'rgba(46,213,115,0.10)' : 'rgba(255,255,255,0.05)',
-            borderColor: autoRefresh ? 'rgba(46,213,115,0.25)' : 'rgba(255,255,255,0.10)',
-            color:       autoRefresh ? '#2ed573' : '#7a8394',
-          }} onClick={() => setAutoRefresh(!autoRefresh)}>
-            {autoRefresh ? '⟳ Auto ON' : '⟳ Auto OFF'}
-          </button>
-          {!live ? (
-            <button style={S.btnLive} onClick={startLive} disabled={!selectedMachine}>▶ Simuler live</button>
-          ) : (
-            <button style={S.btnStop} onClick={stopLive}>■ Arrêter</button>
-          )}
+         
         </div>
       </div>
 
@@ -201,16 +190,7 @@ export default function PageMesures({ mesures = {}, defaultMachineId = null }) {
 
       {loading && <div style={S.loading}>Chargement...</div>}
 
-      {!loading && totalCapteurs === 0 && (
-        <div style={S.emptyState}>
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#4a5260" strokeWidth="1.5">
-            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-          </svg>
-          <div style={{marginTop:12, fontSize:14, color:'#7a8394'}}>Aucune mesure disponible</div>
-          <div style={{marginTop:6, fontSize:12, color:'#4a5260'}}>Lance la simulation pour générer des données</div>
-          <button style={{...S.btnLive, marginTop:16}} onClick={startLive}>▶ Démarrer la simulation</button>
-        </div>
-      )}
+      
 
       {/* Graphiques groupés par type */}
       {!loading && Object.entries(grouped).map(([type, items]) => {

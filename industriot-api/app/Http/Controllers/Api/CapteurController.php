@@ -19,8 +19,8 @@ class CapteurController extends BaseController
 
     // Déterminer les actionneurs accessibles
     if (!$user || $user->role === 'admin') {
-    $query = \App\Models\Actionneur::with(['capteurs.machine'])
-                                   ->where('actif', 1);
+    $query = \App\Models\Actionneur::with(['capteurs.machine', 'machine'])
+                               ->where('actif', 1);
     if ($entrepriseId) {
         $query->whereHas('machine', fn($q) => $q->where('entreprise_id', $entrepriseId));
     }

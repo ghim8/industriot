@@ -157,8 +157,12 @@ const handleSeuilSubmit = async () => {
 {(() => {
   // Regrouper les groupes par machine
   const parMachine = groupes.reduce((acc, g) => {
-    const machineName = g.capteurs?.[0]?.machine?.nom || 'Machine inconnue';
-    const machineId   = g.capteurs?.[0]?.machine?.id  || 0;
+    const machineName = g.actionneur?.machine?.nom 
+                     || g.capteurs?.[0]?.machine?.nom 
+                     || 'Machine inconnue';
+    const machineId   = g.actionneur?.machine?.id 
+                     || g.capteurs?.[0]?.machine?.id 
+                     || 0;
     if (!acc[machineId]) acc[machineId] = { nom: machineName, groupes: [] };
     acc[machineId].groupes.push(g);
     return acc;
@@ -398,7 +402,7 @@ const S = {
   headerTitle:   { fontSize:15, fontWeight:600, color:'#e8eaf0' },
   headerSub:     { fontSize:12, color:'#7a8394', marginTop:4 },
   select:        { padding:'7px 12px', background:'#1c2129', border:'1px solid rgba(255,255,255,0.12)', borderRadius:7, color:'#e8eaf0', fontSize:12, cursor:'pointer', outline:'none' },
-  metricsRow:    { display:'grid', gridTemplateColumns:'repeat(6,1fr)', gap:10, marginBottom:20 },
+  metricsRow:    { display:'grid', gridTemplateColumns:window.innerWidth < 768 ? 'repeat(3,1fr)' : 'repeat(6,1fr)', gap:10, marginBottom:20 },
   mcard:         { background:'#161b22', border:'1px solid rgba(255,255,255,0.07)', borderRadius:8, padding:'12px 14px', position:'relative', overflow:'hidden' },
   mcardBar:      { position:'absolute', top:0, left:0, right:0, height:2 },
   mcardLabel:    { fontSize:10, color:'#4a5260', textTransform:'uppercase', fontWeight:500 },

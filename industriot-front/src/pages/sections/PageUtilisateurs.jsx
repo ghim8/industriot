@@ -69,11 +69,11 @@ const slug = React.useMemo(() =>
   }
 };
 
-  const handleDelete = (user) => {
+ const handleDelete = (u) => {
     setConfirm({
-      message: `Voulez-vous vraiment supprimer l'utilisateur "${user.nom}" ?`,
+      message: `Voulez-vous vraiment supprimer l'utilisateur "${u.nom}" ?`,
       onConfirm: async () => {
-        await api.delete('/utilisateurs');
+        await api.delete(`/utilisateurs/${u.id}`);  // ✅ avec l'ID
         setConfirm(null);
         fetchUsers();
       }

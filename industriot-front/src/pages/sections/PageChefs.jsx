@@ -226,7 +226,7 @@ const S = {
   header:       { display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 },
   headerTitle:  { fontSize:15, fontWeight:600, color:'#e8eaf0' },
   headerSub:    { fontSize:12, color:'#7a8394', marginTop:4 },
-  grid:         { display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:16 },
+  grid:         { display:'grid', gridTemplateColumns: window.innerWidth < 768 ? '1fr' : 'repeat(2,1fr)', gap:16 },
   card:         { background:'#161b22', border:'1px solid rgba(255,255,255,0.07)', borderRadius:10, padding:'20px' },
   cardHead:     { display:'flex', alignItems:'center', gap:12, marginBottom:20, paddingBottom:16, borderBottom:'1px solid rgba(255,255,255,0.06)' },
   avatar:       { width:40, height:40, borderRadius:'50%', background:'rgba(0,153,255,0.15)', border:'1px solid rgba(0,153,255,0.3)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontFamily:'monospace', color:'#0099ff', flexShrink:0 },

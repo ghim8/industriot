@@ -298,7 +298,7 @@ const S = {
   mcardBar:         { position:'absolute', top:0, left:0, right:0, height:2 },
   mcardLabel:       { fontSize:10, color:'#4a5260', letterSpacing:1.5, textTransform:'uppercase', marginBottom:12 },
   mcardVal:         { fontSize:28, fontWeight:600, color:'#e8eaf0' },
-  grid2:            { display:'grid', gridTemplateColumns:'2fr 1fr', gap:16 },
+  grid2:            { display:'grid', gridTemplateColumns:window.innerWidth < 768 ? '1fr' : '2fr 1fr',gap:16 },
   card:             { background:'#161b22', border:'1px solid rgba(255,255,255,0.07)', borderRadius:10, padding:'20px 22px', marginBottom:16 },
   cardHead:         { display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16, paddingBottom:12, borderBottom:'1px solid rgba(255,255,255,0.05)' },
   cardTitle:        { fontSize:11, color:'#7a8394', letterSpacing:1, textTransform:'uppercase' },

@@ -905,7 +905,7 @@ const S = {
   header:           { display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 },
   headerTitle:      { fontSize:15, fontWeight:600, color:'#e8eaf0' },
   headerSub:        { fontSize:12, color:'#7a8394', marginTop:4 },
-  grid:             { display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:16 },
+  grid:             { display:'grid', gridTemplateColumns:window.innerWidth < 768 ? '1fr' : 'repeat(3,1fr)', gap:16 },
   card:             { background:'#161b22', border:'1px solid rgba(255,255,255,0.07)', borderRadius:10, padding:'20px', position:'relative', overflow:'hidden' },
   cardBar:          { position:'absolute', top:0, left:0, right:0, height:2 },
   cardHead:         { display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:14 },

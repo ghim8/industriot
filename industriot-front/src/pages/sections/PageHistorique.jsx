@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import api from '../../api/axios';
 import ConfirmModal from '../../components/ConfirmModal';
 
+const isMobile = window.innerWidth < 768;
+
 export default function PageHistorique() {
   const [connexions, setConnexions]   = useState([]);
   const [loading, setLoading]         = useState(true);
@@ -39,40 +41,41 @@ export default function PageHistorique() {
     });
   };
 
-  const toggleSel = (id) => setSelection(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
-  const toutSel   = () => selection.length === filtrees.length ? setSelection([]) : setSelection(filtrees.map(c => c.id));
-
-  const filtrees    = connexions.filter(c => filtre === 'TOUS' || c.statut === filtre);
-  const totalSucces = connexions.filter(c => c.statut === 'SUCCÈS').length;
-  const totalEchecs = connexions.filter(c => c.statut === 'ÉCHEC').length;
+  const toggleSel  = (id) => setSelection(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+  const toutSel    = () => selection.length === filtrees.length ? setSelection([]) : setSelection(filtrees.map(c => c.id));
+  const filtrees   = connexions.filter(c => filtre === 'TOUS' || c.statut === filtre);
+  const totalSucces= connexions.filter(c => c.statut === 'SUCCÈS').length;
+  const totalEchecs= connexions.filter(c => c.statut === 'ÉCHEC').length;
+  const toutCoche  = selection.length === filtrees.length && filtrees.length > 0;
 
   if (loading) return <div style={S.loading}>Chargement...</div>;
-
-  const toutCoche = selection.length === filtrees.length && filtrees.length > 0;
 
   return (
     <div>
       {confirmData && <ConfirmModal message={confirmData.message} onConfirm={confirmData.onConfirm} onCancel={() => setConfirmData(null)}/>}
 
       {/* Métriques */}
-      <div style={S.metricsRow}>
+      <div style={{
+        ...S.metricsRow,
+        gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4,1fr)',
+      }}>
         {[
-          { label:'Connexions réussies', val:totalSucces,    color:'#2ed573' },
-          { label:'Tentatives échouées', val:totalEchecs,    color:'#ff4757' },
-          { label:'Total',               val:connexions.length, color:'#0099ff' },
-          { label:"Taux d'échec",        val:`${connexions.length > 0 ? Math.round(totalEchecs/connexions.length*100) : 0}%`, color:'#f5a623' },
+          { label:'Réussies',    val:totalSucces,       color:'#2ed573' },
+          { label:'Échouées',    val:totalEchecs,       color:'#ff4757' },
+          { label:'Total',       val:connexions.length, color:'#0099ff' },
+          { label:"Taux échec",  val:`${connexions.length > 0 ? Math.round(totalEchecs/connexions.length*100) : 0}%`, color:'#f5a623' },
         ].map(m => (
           <div key={m.label} style={S.mcard}>
             <div style={{...S.mcardBar, background:m.color}}/>
-            <div style={S.mcardLabel}>{m.label}</div>
-            <div style={{...S.mcardVal, color:m.color}}>{m.val}</div>
+            <div style={{...S.mcardLabel, fontSize: isMobile ? 9 : 11}}>{m.label}</div>
+            <div style={{...S.mcardVal, color:m.color, fontSize: isMobile ? 22 : 28}}>{m.val}</div>
           </div>
         ))}
       </div>
 
       {/* Toolbar */}
-      <div style={S.toolbar}>
-        <div style={S.filtres}>
+      <div style={{...S.toolbar, flexWrap:'wrap'}}>
+        <div style={{...S.filtres, flexWrap:'wrap'}}>
           {[
             { key:'TOUS',   label:'Tous'      },
             { key:'SUCCÈS', label:'Réussies', dot:'#2ed573' },
@@ -94,86 +97,118 @@ export default function PageHistorique() {
         )}
       </div>
 
-      {/* Table */}
-      <div style={S.tableWrap}>
-        {filtrees.length === 0 ? (
-          <div style={S.empty}>Aucune connexion trouvée</div>
-        ) : (
-          <table style={S.tbl}>
-            <thead>
-              <tr style={S.theadRow}>
-                <th style={{...S.th, width:48}}>
-                  <CustomCheckbox checked={toutCoche} onChange={toutSel}/>
-                </th>
-                <th style={S.th}>Utilisateur</th>
-                <th style={S.th}>Horodatage</th>
-                <th style={S.th}>Email</th>
-                <th style={S.th}>Adresse IP</th>
-                <th style={S.th}>Statut</th>
-                <th style={{...S.th, width:48}}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtrees.map((c, idx) => (
-                <tr key={c.id} style={{
-                  ...S.tr,
-                  background: selection.includes(c.id)
-                    ? 'rgba(0,212,170,0.04)'
-                    : idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)',
-                }}>
-                  <td style={S.td}>
-  <CustomCheckbox
-    checked={selection.includes(c.id)}
-    onChange={() => toggleSel(c.id)}
-  />
-</td>
-
-<td style={S.td}>
-  <div style={S.dateMain}>
-    {c.utilisateur?.nom || '—'}
-  </div>
-
-  <div style={S.dateSub}>
-    {c.utilisateur?.role || ''}
-  </div>
-</td>
-
-<td style={S.td}>
-  <div style={S.dateMain}>{new Date(c.horodatage).toLocaleDateString('fr-FR')}</div>
-                    <div style={S.dateSub}>{new Date(c.horodatage).toLocaleTimeString('fr-FR')}</div>
-                  </td>
-                  <td style={S.td}>
-                    <div style={S.emailText}>{c.email_tente}</div>
-                  </td>
-                  <td style={S.td}>
-                    <span style={S.ipChip}>{c.ip || '—'}</span>
-                  </td>
-                  <td style={S.td}>
-                    <span style={{
-                      ...S.statusBadge,
-                      background: c.statut==='SUCCÈS' ? 'rgba(46,213,115,0.10)'  : 'rgba(255,71,87,0.10)',
-                      color:      c.statut==='SUCCÈS' ? '#2ed573' : '#ff4757',
-                      border:     c.statut==='SUCCÈS' ? '1px solid rgba(46,213,115,0.22)' : '1px solid rgba(255,71,87,0.22)',
-                    }}>
-                      <span style={{width:5, height:5, borderRadius:'50%', background: c.statut==='SUCCÈS' ? '#2ed573' : '#ff4757', flexShrink:0,
-                        boxShadow: `0 0 5px ${c.statut==='SUCCÈS' ? '#2ed573' : '#ff4757'}`
-                      }}/>
-                      {c.statut}
-                    </span>
-                  </td>
-                  <td style={S.td}>
-                    <button style={S.btnTrash} onClick={() => supprimerUne(c)} title="Supprimer">
-                      <TrashIcon/>
-                    </button>
-                  </td>
+      {/* ── MOBILE : liste cards ── */}
+      {isMobile ? (
+        <div>
+          {filtrees.length === 0 ? (
+            <div style={S.empty}>Aucune connexion trouvée</div>
+          ) : filtrees.map((c, idx) => (
+            <div key={c.id} style={{
+              background: selection.includes(c.id) ? 'rgba(0,212,170,0.04)' : '#161b22',
+              border: `1px solid ${selection.includes(c.id) ? 'rgba(0,212,170,0.20)' : 'rgba(255,255,255,0.07)'}`,
+              borderRadius: 10,
+              padding: '14px 16px',
+              marginBottom: 10,
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: 12,
+            }}>
+              <CustomCheckbox checked={selection.includes(c.id)} onChange={() => toggleSel(c.id)}/>
+              <div style={{flex:1, minWidth:0}}>
+                <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6}}>
+                  <div>
+                    <div style={{fontSize:13, fontWeight:600, color:'#e8eaf0'}}>{c.utilisateur?.nom || '—'}</div>
+                    <div style={{fontSize:11, color:'#4a5260'}}>{c.utilisateur?.role || ''}</div>
+                  </div>
+                  <span style={{
+                    display:'inline-flex', alignItems:'center', gap:4,
+                    padding:'3px 8px', borderRadius:12, fontSize:10, fontWeight:600,
+                    background: c.statut==='SUCCÈS' ? 'rgba(46,213,115,0.10)' : 'rgba(255,71,87,0.10)',
+                    color:      c.statut==='SUCCÈS' ? '#2ed573' : '#ff4757',
+                    border:     c.statut==='SUCCÈS' ? '1px solid rgba(46,213,115,0.22)' : '1px solid rgba(255,71,87,0.22)',
+                  }}>
+                    <span style={{width:5, height:5, borderRadius:'50%', background: c.statut==='SUCCÈS' ? '#2ed573' : '#ff4757'}}/>
+                    {c.statut}
+                  </span>
+                </div>
+                <div style={{fontSize:11, color:'#7a8394', marginBottom:4, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
+                  {c.email_tente}
+                </div>
+                <div style={{display:'flex', alignItems:'center', justifyContent:'space-between'}}>
+                  <div style={{fontSize:11, color:'#4a5260'}}>
+                    {new Date(c.horodatage).toLocaleDateString('fr-FR')} · {new Date(c.horodatage).toLocaleTimeString('fr-FR')}
+                  </div>
+                  <span style={{fontSize:10, color:'#5a6270', background:'rgba(255,255,255,0.04)', padding:'2px 7px', borderRadius:4}}>
+                    {c.ip || '—'}
+                  </span>
+                </div>
+              </div>
+              <button style={S.btnTrash} onClick={() => supprimerUne(c)}>
+                <TrashIcon/>
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : (
+        /* ── DESKTOP : tableau classique ── */
+        <div style={S.tableWrap}>
+          {filtrees.length === 0 ? (
+            <div style={S.empty}>Aucune connexion trouvée</div>
+          ) : (
+            <table style={S.tbl}>
+              <thead>
+                <tr style={S.theadRow}>
+                  <th style={{...S.th, width:48}}>
+                    <CustomCheckbox checked={toutCoche} onChange={toutSel}/>
+                  </th>
+                  <th style={S.th}>Utilisateur</th>
+                  <th style={S.th}>Horodatage</th>
+                  <th style={S.th}>Email</th>
+                  
+                  <th style={S.th}>Statut</th>
+                  <th style={{...S.th, width:48}}></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+              </thead>
+              <tbody>
+                {filtrees.map((c, idx) => (
+                  <tr key={c.id} style={{
+                    ...S.tr,
+                    background: selection.includes(c.id)
+                      ? 'rgba(0,212,170,0.04)'
+                      : idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)',
+                  }}>
+                    <td style={S.td}><CustomCheckbox checked={selection.includes(c.id)} onChange={() => toggleSel(c.id)}/></td>
+                    <td style={S.td}>
+                      <div style={S.dateMain}>{c.utilisateur?.nom || '—'}</div>
+                      <div style={S.dateSub}>{c.utilisateur?.role || ''}</div>
+                    </td>
+                    <td style={S.td}>
+                      <div style={S.dateMain}>{new Date(c.horodatage).toLocaleDateString('fr-FR')}</div>
+                      <div style={S.dateSub}>{new Date(c.horodatage).toLocaleTimeString('fr-FR')}</div>
+                    </td>
+                    <td style={S.td}><div style={S.emailText}>{c.email_tente}</div></td>
+                    <td style={S.td}>
+                      <span style={{
+                        ...S.statusBadge,
+                        background: c.statut==='SUCCÈS' ? 'rgba(46,213,115,0.10)' : 'rgba(255,71,87,0.10)',
+                        color:      c.statut==='SUCCÈS' ? '#2ed573' : '#ff4757',
+                        border:     c.statut==='SUCCÈS' ? '1px solid rgba(46,213,115,0.22)' : '1px solid rgba(255,71,87,0.22)',
+                      }}>
+                        <span style={{width:5, height:5, borderRadius:'50%', background: c.statut==='SUCCÈS' ? '#2ed573' : '#ff4757', flexShrink:0}}/>
+                        {c.statut}
+                      </span>
+                    </td>
+                    <td style={S.td}>
+                      <button style={S.btnTrash} onClick={() => supprimerUne(c)}><TrashIcon/></button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
 
-      {/* Footer */}
       {filtrees.length > 0 && (
         <div style={S.footer}>
           {filtrees.length} entrée(s) · {selection.length > 0 && `${selection.length} sélectionnée(s)`}
@@ -183,7 +218,6 @@ export default function PageHistorique() {
   );
 }
 
-// ── Checkbox personnalisée ────────────────────────────────
 function CustomCheckbox({ checked, onChange }) {
   return (
     <div onClick={onChange} style={{...S2.wrap, ...(checked ? S2.wrapChecked : {})}}>
@@ -211,14 +245,14 @@ const TrashIcon = () => (
 
 const S = {
   loading:         { color:'#7a8394', textAlign:'center', marginTop:40 },
-  metricsRow:      { display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:14, marginBottom:20 },
-  mcard:           { background:'#161b22', border:'1px solid rgba(255,255,255,0.07)', borderRadius:10, padding:'18px 20px', position:'relative', overflow:'hidden' },
+  metricsRow:      { display:'grid', gap:14, marginBottom:20 },
+  mcard:           { background:'#161b22', border:'1px solid rgba(255,255,255,0.07)', borderRadius:10, padding:'14px 16px', position:'relative', overflow:'hidden' },
   mcardBar:        { position:'absolute', top:0, left:0, right:0, height:2 },
-  mcardLabel:      { fontSize:11, color:'#4a5260', letterSpacing:0.3, marginBottom:12, textTransform:'uppercase', fontWeight:500 },
-  mcardVal:        { fontSize:28, fontWeight:700 },
+  mcardLabel:      { color:'#4a5260', letterSpacing:0.3, marginBottom:8, textTransform:'uppercase', fontWeight:500 },
+  mcardVal:        { fontWeight:700 },
   toolbar:         { display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12, gap:8 },
   filtres:         { display:'flex', gap:6 },
-  filtreBtn:       { display:'flex', alignItems:'center', gap:6, padding:'7px 16px', background:'transparent', border:'1px solid rgba(255,255,255,0.09)', borderRadius:20, color:'#7a8394', fontSize:12, cursor:'pointer', transition:'all 0.15s' },
+  filtreBtn:       { display:'flex', alignItems:'center', gap:6, padding:'7px 14px', background:'transparent', border:'1px solid rgba(255,255,255,0.09)', borderRadius:20, color:'#7a8394', fontSize:12, cursor:'pointer' },
   filtreBtnActive: { background:'rgba(0,212,170,0.10)', borderColor:'rgba(0,212,170,0.28)', color:'#00d4aa' },
   btnRed:          { display:'flex', alignItems:'center', gap:6, padding:'7px 14px', background:'rgba(255,71,87,0.08)', border:'1px solid rgba(255,71,87,0.20)', borderRadius:7, color:'#ff4757', fontSize:12, cursor:'pointer' },
   tableWrap:       { background:'#161b22', border:'1px solid rgba(255,255,255,0.07)', borderRadius:10, overflow:'hidden' },
